@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "repohub"
+version = "0.1.0"
+description = "A store-style hub for GitHub and GitLab repositories"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.27",
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+  "jinja2>=3.1",
+  "python-multipart>=0.0.9",
+  "markdown-it-py>=3",
+  "nh3>=0.2.17",
+  "textual>=0.80",
+  "pyyaml>=6",
+  "platformdirs>=4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.23", "respx>=0.21"]
+
+[project.scripts]
+repohub-web = "repohub.web.app:main"
+repohub-tui = "repohub.tui.app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/repohub"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = ["live: hits the real GitHub/GitLab APIs (opt in with -m live)"]
+addopts = "-m 'not live'"
