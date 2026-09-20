@@ -7,7 +7,7 @@ import httpx
 
 from repohub.core.models import Asset, Release, Repo, SearchFilters, parse_arch
 from repohub.core.textsafe import clean_text
-from repohub.core.providers.base import ProviderError, RateLimited, guard_parse, safe_url, valid_slug
+from repohub.core.providers.base import NotFound, ProviderError, RateLimited, guard_parse, safe_url, valid_slug
 
 README_NAMES = ("README.md", "README.markdown", "README.rst", "README.txt", "README")
 
@@ -28,6 +28,7 @@ class GitLabProvider:
         headers = {"User-Agent": "repohub"}
         if token:
             headers["PRIVATE-TOKEN"] = token
+        self.token_rejected = False
         self._client = httpx.AsyncClient(base_url=base_url, headers=headers, timeout=15)
 
     async def aclose(self) -> None:
@@ -38,11 +39,24 @@ class GitLabProvider:
             raise ProviderError(self.host, "invalid repository name")
         return quote(slug, safe="")
 
-    async def _get(self, path: str, params: dict | None = None) -> httpx.Response | None:
+    async def _send(self, path: str, params: dict | None) -> httpx.Response:
         try:
-            resp = await self._client.get(path, params=params)
+            return await self._client.get(path, params=params)
         except httpx.HTTPError as e:
             raise ProviderError(self.host, "network error") from e
+
+    def _drop_token(self) -> bool:
+        """A rejected token falls back to anonymous access for this host."""
+        if "PRIVATE-TOKEN" not in self._client.headers:
+            return False
+        del self._client.headers["PRIVATE-TOKEN"]
+        self.token_rejected = True
+        return True
+
+    async def _get(self, path: str, params: dict | None = None) -> httpx.Response | None:
+        resp = await self._send(path, params)
+        if resp.status_code == 401 and self._drop_token():
+            resp = await self._send(path, params)  # one anonymous retry, never a loop
         if resp.status_code == 429:
             retry = resp.headers.get("retry-after", "")
             raise RateLimited(self.host, "rate limited", int(time.time()) + int(retry) if retry.isdigit() else None)
@@ -77,7 +91,7 @@ class GitLabProvider:
         enc = self._check_slug(slug)
         resp = await self._get(f"/projects/{enc}", {"license": "true"})
         if resp is None:
-            raise ProviderError(self.host, "repository not found")
+            raise NotFound(self.host, "repository not found")
         item = resp.json()
         language = ""
         try:

@@ -147,3 +147,38 @@ async def test_readme_and_release_text_cleaned():
     assert await p.readme("g/p") == "# Hi[2J\nbody"
     rel = await p.latest_release("g/p")
     assert rel.tag == "v1" and rel.assets[0].name == "a.tgz"
+
+
+@respx.mock
+async def test_rejected_token_falls_back_to_anonymous_once():
+    calls = []
+
+    def handler(request):
+        calls.append(request.headers.get("private-token"))
+        return httpx.Response(401) if "private-token" in request.headers else httpx.Response(200, json=[])
+
+    respx.get(f"{API}/projects").mock(side_effect=handler)
+    p = GitLabProvider(token="tok")
+    assert await p.search("x", SearchFilters()) == []
+    assert calls == ["tok", None]
+    assert p.token_rejected is True
+    await p.search("x", SearchFilters())
+    assert calls == ["tok", None, None]
+
+
+@respx.mock
+async def test_anonymous_401_still_raises_and_does_not_loop():
+    route = respx.get(f"{API}/projects").mock(return_value=httpx.Response(401))
+    with pytest.raises(ProviderError, match="token rejected"):
+        await GitLabProvider(token="tok").search("x", SearchFilters())
+    assert route.call_count == 2
+    with pytest.raises(ProviderError, match="token rejected"):
+        await GitLabProvider().search("x", SearchFilters())
+
+
+@respx.mock
+async def test_repo_404_is_not_found():
+    from repohub.core.providers.base import NotFound
+    respx.get(f"{API}/projects/g%2Fp").mock(return_value=httpx.Response(404))
+    with pytest.raises(NotFound, match="repository not found"):
+        await GitLabProvider().repo("g/p")

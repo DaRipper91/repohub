@@ -1,3 +1,4 @@
+import pytest
 from datetime import datetime, timezone
 
 from helpers import FakeProvider, make_hub, mk
@@ -211,3 +212,18 @@ async def test_detail_caps_huge_readme():
 async def test_detail_leaves_short_readme_alone():
     gh = FakeProvider("github", [mk("github", "o/r")], readme="short")
     assert (await make_hub(gh).detail("github", "o/r")).readme == "short"
+
+
+async def test_detail_serves_stale_on_any_provider_error_except_not_found():
+    from repohub.core.providers.base import NotFound
+
+    clock = Clock()
+    gh = FakeProvider("github", [mk("github", "o/r")])
+    hub = make_hub(gh, clock=clock)
+    await hub.detail("github", "o/r")
+    clock.t += 7200
+    gh.detail_error = ProviderError("github", "network error")
+    assert (await hub.detail("github", "o/r")).repo.slug == "o/r"
+    gh.detail_error = NotFound("github", "repository not found")
+    with pytest.raises(NotFound):
+        await hub.detail("github", "o/r")

@@ -17,7 +17,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from repohub.core.browse import load_shelves
 from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_clone
 from repohub.core.models import SearchFilters
-from repohub.core.providers.base import ProviderError, valid_slug
+from repohub.core.providers.base import NotFound, ProviderError, valid_slug
 
 HERE = Path(__file__).parent
 HOSTS = ("github", "gitlab")
@@ -105,6 +105,8 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         require_repo(host, slug)
         try:
             d = await hub.detail(host, slug)
+        except NotFound as e:
+            return page(request, "_message.html", status=404, message=f"Could not load {slug}: {e}")
         except ProviderError as e:
             return page(request, "_message.html", status=502, message=f"Could not load {slug}: {e}")
         return page(request, "repo.html", d=d, readme_html=render_markdown(d.readme) if d.readme else "",
@@ -126,6 +128,8 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         else:
             try:
                 hub.favorites.add((await hub.detail(host, slug)).repo)
+            except NotFound as e:
+                return page(request, "_message.html", status=404, message=str(e))
             except ProviderError as e:
                 return page(request, "_message.html", status=502, message=str(e))
             is_fav = True

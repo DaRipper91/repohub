@@ -14,6 +14,10 @@ class ProviderError(Exception):
         self.reset_at = reset_at
 
 
+class NotFound(ProviderError):
+    pass
+
+
 class RateLimited(ProviderError):
     pass
 

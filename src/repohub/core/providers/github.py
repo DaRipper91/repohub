@@ -4,7 +4,7 @@ import httpx
 
 from repohub.core.models import Asset, Release, Repo, SearchFilters, parse_arch
 from repohub.core.textsafe import clean_text
-from repohub.core.providers.base import ProviderError, RateLimited, guard_parse, safe_url, valid_slug
+from repohub.core.providers.base import NotFound, ProviderError, RateLimited, guard_parse, safe_url, valid_slug
 
 
 def _to_repo(item: dict) -> Repo:
@@ -26,6 +26,7 @@ class GitHubProvider:
         headers = {"Accept": "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "User-Agent": "repohub"}
         if token:
             headers["Authorization"] = f"Bearer {token}"
+        self.token_rejected = False
         self._client = httpx.AsyncClient(base_url=base_url, headers=headers, timeout=15)
 
     async def aclose(self) -> None:
@@ -35,11 +36,24 @@ class GitHubProvider:
         if not valid_slug(slug, "github"):
             raise ProviderError(self.host, "invalid repository name")
 
-    async def _get(self, path: str, params: dict | None = None, accept: str | None = None) -> httpx.Response | None:
+    async def _send(self, path: str, params: dict | None, accept: str | None) -> httpx.Response:
         try:
-            resp = await self._client.get(path, params=params, headers={"Accept": accept} if accept else None)
+            return await self._client.get(path, params=params, headers={"Accept": accept} if accept else None)
         except httpx.HTTPError as e:
             raise ProviderError(self.host, "network error") from e
+
+    def _drop_token(self) -> bool:
+        """A rejected token falls back to anonymous access for this host."""
+        if "Authorization" not in self._client.headers:
+            return False
+        del self._client.headers["Authorization"]
+        self.token_rejected = True
+        return True
+
+    async def _get(self, path: str, params: dict | None = None, accept: str | None = None) -> httpx.Response | None:
+        resp = await self._send(path, params, accept)
+        if resp.status_code == 401 and self._drop_token():
+            resp = await self._send(path, params, accept)  # one anonymous retry, never a loop
         limited = resp.headers.get("x-ratelimit-remaining") == "0"
         if resp.status_code == 429 or (resp.status_code == 403 and limited):
             reset = resp.headers.get("x-ratelimit-reset", "")
@@ -76,7 +90,7 @@ class GitHubProvider:
         self._check_slug(slug)
         resp = await self._get(f"/repos/{slug}")
         if resp is None:
-            raise ProviderError(self.host, "repository not found")
+            raise NotFound(self.host, "repository not found")
         return _to_repo(resp.json())
 
     @guard_parse

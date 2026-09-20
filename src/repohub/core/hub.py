@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from repohub.core.browse import Shelf
 from repohub.core.cache import Cache
 from repohub.core.models import Release, Repo, SearchFilters
-from repohub.core.providers.base import ProviderError, RateLimited
+from repohub.core.providers.base import NotFound, ProviderError
 from repohub.core.search import SearchResult, search_all
 from repohub.core.store import Favorites
 
@@ -71,7 +71,9 @@ class Hub:
                 provider.repo(slug), provider.readme(slug), provider.latest_release(slug), return_exceptions=True)
             if isinstance(repo, BaseException):
                 raise repo
-        except RateLimited:
+        except NotFound:
+            raise
+        except ProviderError:
             stale = self.cache.get(key, allow_stale=True)
             if stale is not None:
                 return Detail.from_dict(stale)

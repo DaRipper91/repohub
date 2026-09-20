@@ -5,6 +5,7 @@ from helpers import FakeProvider, make_hub, mk
 from repohub.core.browse import Shelf
 from repohub.core.clone import CloneError
 from repohub.core.models import Asset, Release
+from repohub.core.providers.base import ProviderError
 from repohub.web.app import create_app, render_markdown
 
 TOKEN = "test-token"
@@ -174,3 +175,26 @@ def test_http_errors_render_html_messages_with_security_headers(setup):
     assert "Content-Security-Policy" in r.headers
     r = client.get("/shelf/9")
     assert r.status_code == 404 and r.headers["content-type"].startswith("text/html")
+
+
+def _not_found_setup(tmp_path):
+    from repohub.core.providers.base import NotFound
+    gh = FakeProvider("github", [], detail_error=NotFound("github", "repository not found"))
+    app = create_app(make_hub(gh), tmp_path, session_token=TOKEN, shelves=[])
+    return TestClient(app, base_url="http://localhost")
+
+
+def test_missing_repo_page_is_404(tmp_path):
+    r = _not_found_setup(tmp_path).get("/repo/github/o/gone")
+    assert r.status_code == 404 and "repository not found" in r.text
+
+
+def test_other_provider_errors_stay_502(tmp_path):
+    gh = FakeProvider("github", [], detail_error=ProviderError("github", "network error"))
+    client = TestClient(create_app(make_hub(gh), tmp_path, session_token=TOKEN, shelves=[]), base_url="http://localhost")
+    assert client.get("/repo/github/o/r").status_code == 502
+
+
+def test_favorite_toggle_of_missing_repo_is_404(tmp_path):
+    r = _not_found_setup(tmp_path).post("/favorite", data={"host": "github", "slug": "o/gone", "token": TOKEN})
+    assert r.status_code == 404 and "repository not found" in r.text
