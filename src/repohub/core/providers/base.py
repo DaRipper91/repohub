@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import re
+from urllib.parse import urlparse
 
 _SLUG = re.compile(r"^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)+$")
 
@@ -15,6 +16,21 @@ class ProviderError(Exception):
 
 class RateLimited(ProviderError):
     pass
+
+
+def safe_url(value: str | None) -> str:
+    """Return the stripped value only if it is a plain http(s) URL with a host and no whitespace/control chars."""
+    if not value:
+        return ""
+    v = value.strip()
+    if not v or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in v):
+        return ""
+    try:
+        u = urlparse(v)
+        host = u.hostname
+    except ValueError:
+        return ""
+    return v if u.scheme.lower() in ("http", "https") and host else ""
 
 
 def valid_slug(slug: str, host: str = "github") -> bool:

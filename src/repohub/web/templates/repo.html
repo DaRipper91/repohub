@@ -10,13 +10,13 @@
   <div class="actions">
     {% with host=r.host, slug=r.slug %}{% include "_fav_button.html" %}{% endwith %}
     <a class="button" href="/clone?host={{ r.host }}&slug={{ r.slug | urlencode }}">Clone…</a>
-    <a class="button" href="{{ r.url }}" rel="noopener noreferrer">Open on {{ r.host }}</a>
+    {% if r.url.lower().startswith(("http://", "https://")) %}<a class="button" href="{{ r.url }}" rel="noopener noreferrer">Open on {{ r.host }}</a>{% endif %}
   </div>
   <div class="layout">
     <div class="readme">{% if readme_html %}{{ readme_html | safe }}{% else %}<p class="dim">No README.</p>{% endif %}</div>
     <aside>
       <h3>Topics</h3><p>{% for t in r.topics %}<span class="tag">{{ t }}</span> {% else %}<span class="dim">none</span>{% endfor %}</p>
-      {% if r.homepage %}<p><a href="{{ r.homepage }}" rel="noopener noreferrer">Homepage</a></p>{% endif %}
+      {% if r.homepage.lower().startswith(("http://", "https://")) %}<p><a href="{{ r.homepage }}" rel="noopener noreferrer">Homepage</a></p>{% endif %}
       <h3>Latest release</h3>
       {% if d.release %}
         <p>{{ d.release.tag }} {% if d.release.has_arm64 %}<span class="badge ok">arm64</span>{% endif %}</p>

@@ -5,7 +5,7 @@ import secrets
 from pathlib import Path
 
 import nh3
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,11 +21,8 @@ from repohub.core.providers.base import ProviderError, valid_slug
 HERE = Path(__file__).parent
 HOSTS = ("github", "gitlab")
 CSP = ("default-src 'self'; img-src * data:; style-src 'self' 'unsafe-inline'; script-src 'self'; "
-       "frame-ancestors 'none'; form-action 'self'")
+       "frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
 _md = MarkdownIt("commonmark", {"html": False})
-# Let markdown-it emit every link target; nh3 then strips unsafe schemes such as javascript:
-# (otherwise the raw "[x](javascript:...)" source would be left behind as visible text).
-_md.validateLink = lambda url: True
 
 
 def render_markdown(text: str) -> str:
@@ -53,7 +50,7 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         return templates.TemplateResponse(request, name, {"token": token, "form": {}, "q": "", **ctx}, status_code=status)
 
     def require_token(value: str) -> None:
-        if not secrets.compare_digest(value or "", token):
+        if not secrets.compare_digest((value or "").encode("utf-8"), token.encode("utf-8")):
             raise HTTPException(403, "missing or invalid session token")
 
     def require_repo(host: str, slug: str) -> None:
@@ -71,7 +68,8 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         return page(request, "_results.html", result=await hub.shelf(shelf_list[index]), limit=6)
 
     @app.get("/search", response_class=HTMLResponse)
-    async def search(request: Request, q: str = "", language: str = "", min_stars: int = 0, days: int = 0,
+    async def search(request: Request, q: str = "", language: str = "", min_stars: int = Query(0, ge=0, le=10_000_000),
+                     days: int = Query(0, ge=0, le=36500),
                      host: str = "both", archived: str = ""):
         if host != "both" and host not in HOSTS:
             raise HTTPException(400, "bad host")

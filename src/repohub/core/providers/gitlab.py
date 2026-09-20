@@ -6,14 +6,14 @@ from urllib.parse import quote
 import httpx
 
 from repohub.core.models import Asset, Release, Repo, SearchFilters, parse_arch
-from repohub.core.providers.base import ProviderError, RateLimited, guard_parse, valid_slug
+from repohub.core.providers.base import ProviderError, RateLimited, guard_parse, safe_url, valid_slug
 
 README_NAMES = ("README.md", "README.markdown", "README.rst", "README.txt", "README")
 
 
 def _to_repo(item: dict, language: str = "") -> Repo:
     return Repo(
-        host="gitlab", slug=item["path_with_namespace"], url=item["web_url"], description=item.get("description") or "",
+        host="gitlab", slug=item["path_with_namespace"], url=safe_url(item["web_url"]) or f'https://gitlab.com/{item["path_with_namespace"]}', description=item.get("description") or "",
         stars=item.get("star_count", 0), language=language, license=(item.get("license") or {}).get("name") or "",
         topics=tuple(item.get("topics") or item.get("tag_list") or ()), pushed_at=item.get("last_activity_at") or "",
         archived=bool(item.get("archived")), forks=item.get("forks_count", 0), homepage="",

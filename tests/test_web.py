@@ -53,7 +53,7 @@ def test_repo_page_sanitizes_readme_and_shows_arm64_badge(setup):
     client, *_ = setup
     r = client.get("/repo/github/o/r")
     assert r.status_code == 200 and "Title" in r.text and "arm64" in r.text
-    assert "<script>alert" not in r.text and "javascript:" not in r.text
+    assert "<script>alert" not in r.text and 'href="javascript:' not in r.text.lower()
 
 
 def test_repo_page_rejects_invalid_slug(setup):
@@ -64,7 +64,7 @@ def test_repo_page_rejects_invalid_slug(setup):
 
 def test_render_markdown_strips_scripts_and_js_links():
     out = render_markdown("<script>x</script>\n\n[a](javascript:alert(1)) **b**")
-    assert "<script" not in out and "javascript:" not in out and "<strong>b</strong>" in out
+    assert "<script" not in out and 'href="javascript:' not in out.lower() and "<strong>b</strong>" in out
 
 
 def test_favorite_requires_token_then_toggles(setup):
@@ -108,9 +108,44 @@ def test_foreign_host_header_is_rejected(setup):
 def test_security_headers_present(setup):
     client, *_ = setup
     h = client.get("/").headers
-    assert "script-src 'self'" in h["content-security-policy"] and h["x-content-type-options"] == "nosniff"
+    assert "script-src 'self'" in h["content-security-policy"] and "base-uri 'none'" in h["content-security-policy"] and h["x-content-type-options"] == "nosniff"
 
 
 def test_static_htmx_is_served(setup):
     client, *_ = setup
     assert client.get("/static/htmx.min.js").status_code == 200
+
+
+@pytest.mark.parametrize("src", ["[a](javascript:alert(1))", "[a](vbscript:x)", "[a](data:text/html,x)", "![i](javascript:x)"])
+def test_markdown_dangerous_schemes_produce_no_href_or_src(src):
+    out = render_markdown(src).lower()
+    for scheme in ("javascript:", "vbscript:", "data:"):
+        assert f'href="{scheme}' not in out and f'src="{scheme}' not in out
+
+
+def test_repo_page_never_renders_unsafe_homepage_or_url(tmp_path):
+    hub = make_hub(FakeProvider("github", [mk("github", "o/r", 5, homepage="javascript:alert(1)", url="javascript:alert(2)")]))
+    client = TestClient(create_app(hub, tmp_path, session_token=TOKEN, shelves=[]), base_url="http://localhost")
+    r = client.get("/repo/github/o/r")
+    assert r.status_code == 200 and 'href="javascript:' not in r.text.lower()
+
+
+def test_non_ascii_token_is_403_not_500(setup):
+    client, _, calls = setup
+    assert client.post("/favorite", data={"host": "github", "slug": "o/r", "token": "t\u00f6k"}).status_code == 403
+    assert client.post("/clone", data={"host": "github", "slug": "o/r", "token": "t\u00f6k"}).status_code == 403
+    assert calls == []
+
+
+def test_days_and_min_stars_are_range_checked(setup):
+    client, *_ = setup
+    assert client.get("/search", params={"q": "x", "days": "99999999999999999999"}).status_code == 422
+    assert client.get("/search", params={"q": "x", "days": "9999999"}).status_code == 422
+    assert client.get("/search", params={"q": "x", "min_stars": "-1"}).status_code == 422
+    assert client.get("/search", params={"q": "x", "days": "30"}).status_code == 200
+
+
+def test_app_js_is_referenced_and_served(setup):
+    client, *_ = setup
+    assert '/static/app.js' in client.get("/").text
+    assert client.get("/static/app.js").status_code == 200

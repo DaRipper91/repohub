@@ -35,7 +35,7 @@ def _keep(repo: Repo, f: SearchFilters) -> bool:
 async def search_all(providers: dict, query: str, filters: SearchFilters, now: datetime | None = None) -> SearchResult:
     if filters.updated_within_days:
         now = now or datetime.now(timezone.utc)
-        cutoff = (now - timedelta(days=filters.updated_within_days)).date().isoformat()
+        cutoff = (now - timedelta(days=min(filters.updated_within_days, 36500))).date().isoformat()
         filters = replace(filters, pushed_after=cutoff)
     hosts = [h for h in filters.hosts if h in providers]
     outcomes = await asyncio.gather(*(providers[h].search(query, filters) for h in hosts), return_exceptions=True)

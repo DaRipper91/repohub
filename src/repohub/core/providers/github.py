@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 
 from repohub.core.models import Asset, Release, Repo, SearchFilters, parse_arch
-from repohub.core.providers.base import ProviderError, RateLimited, guard_parse, valid_slug
+from repohub.core.providers.base import ProviderError, RateLimited, guard_parse, safe_url, valid_slug
 
 
 def _to_repo(item: dict) -> Repo:
@@ -11,10 +11,10 @@ def _to_repo(item: dict) -> Repo:
     if lic == "NOASSERTION":
         lic = "other"
     return Repo(
-        host="github", slug=item["full_name"], url=item["html_url"], description=item.get("description") or "",
+        host="github", slug=item["full_name"], url=safe_url(item["html_url"]) or f'https://github.com/{item["full_name"]}', description=item.get("description") or "",
         stars=item["stargazers_count"], language=item.get("language") or "", license=lic,
         topics=tuple(item.get("topics") or ()), pushed_at=item.get("pushed_at") or "",
-        archived=bool(item.get("archived")), forks=item.get("forks_count", 0), homepage=item.get("homepage") or "",
+        archived=bool(item.get("archived")), forks=item.get("forks_count", 0), homepage=safe_url(item.get("homepage")),
     )
 
 

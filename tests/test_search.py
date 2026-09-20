@@ -59,3 +59,9 @@ async def test_only_selected_hosts_are_queried():
 def test_result_roundtrip():
     r = SearchResult([mk()], {"gitlab": "x"}, stale=True)
     assert SearchResult.from_dict(r.to_dict()) == r
+
+
+async def test_huge_updated_within_days_does_not_raise():
+    gh = FakeProvider("github", [mk("github", "a/a", 5)])
+    r = await run([gh], SearchFilters(updated_within_days=10**20))
+    assert r.errors == {}
