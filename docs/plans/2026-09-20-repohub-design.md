@@ -1,7 +1,7 @@
 # RepoHub Design
 
 Date: 2026-09-20
-Status: Approved design, not yet implemented
+Status: Implemented (see "Changes made during implementation" at the end)
 
 RepoHub is a "store front" for source repositories. Users search and browse GitHub and GitLab from one place, open a store-style detail page for any repo, save favorites and clone repos. It has two front ends, a web UI and a terminal UI, on top of one shared core.
 
