@@ -28,7 +28,11 @@ class Favorites:
                 (repo.key, json.dumps(repo.to_dict()), t, t))
             self._db.commit()
 
-    update = add
+    def update(self, repo: Repo) -> None:
+        with self._lock:
+            self._db.execute("UPDATE favorites SET data = ?, refreshed_at = ? WHERE key = ?",
+                             (json.dumps(repo.to_dict()), self._now(), repo.key))
+            self._db.commit()
 
     def remove(self, key: str) -> None:
         with self._lock:

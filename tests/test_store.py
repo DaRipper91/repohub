@@ -43,3 +43,29 @@ def test_update_marks_fresh_and_persists(tmp_path):
     f.update(mk("github", "a/a", 7))
     assert f.stale(max_age=50) == []
     assert Favorites(p).list()[0].stars == 7
+
+
+def test_update_does_not_readd_a_removed_favorite():
+    f = Favorites()
+    r = mk("github", "a/a", 1)
+    f.add(r)
+    f.remove(r.key)
+    f.update(r)
+    assert not f.is_favorite(r.key)
+    assert f.list() == []
+
+
+def test_update_refreshes_data_but_keeps_added_at_and_order():
+    clock = Clock()
+    f = Favorites(now=clock)
+    a = mk("github", "a/a", 1)
+    b = mk("github", "b/b", 2)
+    f.add(a)
+    clock.t = 2000.0
+    f.add(b)
+    clock.t = 3000.0
+    f.update(mk("github", "a/a", 50))
+    assert [r.stars for r in f.list()] == [2, 50]
+    assert [r.key for r in f.list()] == [b.key, a.key]
+    clock.t = 3100.0
+    assert [r.key for r in f.stale(max_age=500)] == [b.key]
