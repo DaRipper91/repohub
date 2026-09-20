@@ -149,3 +149,28 @@ def test_app_js_is_referenced_and_served(setup):
     client, *_ = setup
     assert '/static/app.js' in client.get("/").text
     assert client.get("/static/app.js").status_code == 200
+
+
+def test_empty_numeric_filters_are_accepted(setup):
+    client, *_ = setup
+    r = client.get("/search", params={"q": "o", "min_stars": "", "days": "", "language": "", "host": "both"})
+    assert r.status_code == 200 and "o/r" in r.text
+    assert client.get("/search", params={"q": "o", "min_stars": "  ", "days": " "}).status_code == 200
+
+
+def test_garbage_numeric_filters_are_422_html(setup):
+    client, *_ = setup
+    for params in ({"min_stars": "abc"}, {"days": "1.5"}, {"days": "x"}):
+        r = client.get("/search", params={"q": "o", **params})
+        assert r.status_code == 422 and r.headers["content-type"].startswith("text/html")
+
+
+def test_http_errors_render_html_messages_with_security_headers(setup):
+    client, *_ = setup
+    r = client.post("/favorite", data={"host": "github", "slug": "o/r"})
+    assert r.status_code == 403
+    assert r.headers["content-type"].startswith("text/html")
+    assert "missing or invalid session token" in r.text
+    assert "Content-Security-Policy" in r.headers
+    r = client.get("/shelf/9")
+    assert r.status_code == 404 and r.headers["content-type"].startswith("text/html")

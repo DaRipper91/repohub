@@ -5,12 +5,13 @@ import secrets
 from pathlib import Path
 
 import nh3
-from fastapi import FastAPI, Form, HTTPException, Query, Request
+from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markdown_it import MarkdownIt
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from repohub.core.browse import load_shelves
@@ -27,6 +28,19 @@ _md = MarkdownIt("commonmark", {"html": False})
 
 def render_markdown(text: str) -> str:
     return nh3.clean(_md.render(text or ""), link_rel="noopener noreferrer")
+
+
+def _int_param(raw: str, name: str, maximum: int) -> int:
+    raw = (raw or "").strip()
+    if not raw:
+        return 0
+    try:
+        value = int(raw)
+    except ValueError:
+        raise HTTPException(422, f"{name} must be a whole number") from None
+    if not 0 <= value <= maximum:
+        raise HTTPException(422, f"{name} must be between 0 and {maximum}")
+    return value
 
 
 def create_app(hub, clone_root, session_token: str | None = None, shelves=None, cloner=do_clone,
@@ -49,6 +63,10 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
     def page(request: Request, name: str, status: int = 200, **ctx):
         return templates.TemplateResponse(request, name, {"token": token, "form": {}, "q": "", **ctx}, status_code=status)
 
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(request: Request, exc: StarletteHTTPException):
+        return page(request, "_message.html", status=exc.status_code, message=str(exc.detail))
+
     def require_token(value: str) -> None:
         if not secrets.compare_digest((value or "").encode("utf-8"), token.encode("utf-8")):
             raise HTTPException(403, "missing or invalid session token")
@@ -68,12 +86,14 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         return page(request, "_results.html", result=await hub.shelf(shelf_list[index]), limit=6)
 
     @app.get("/search", response_class=HTMLResponse)
-    async def search(request: Request, q: str = "", language: str = "", min_stars: int = Query(0, ge=0, le=10_000_000),
-                     days: int = Query(0, ge=0, le=36500),
+    async def search(request: Request, q: str = "", language: str = "", min_stars: str = "",
+                     days: str = "",
                      host: str = "both", archived: str = ""):
         if host != "both" and host not in HOSTS:
             raise HTTPException(400, "bad host")
-        filters = SearchFilters(language=language or None, min_stars=max(min_stars, 0),
+        min_stars = _int_param(min_stars, "min_stars", 10_000_000)
+        days = _int_param(days, "days", 36500)
+        filters = SearchFilters(language=language or None, min_stars=min_stars,
                                 updated_within_days=days or None, hosts=HOSTS if host == "both" else (host,),
                                 include_archived=bool(archived))
         result = await hub.search(q, filters)
