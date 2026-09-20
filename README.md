@@ -17,7 +17,7 @@ uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -e ".[de
 .venv/bin/repohub-tui
 ```
 
-`repohub-web --help` lists its options. `repohub-tui` has no options; it starts the terminal app immediately.
+`repohub-web --help` lists its options. `repohub-tui` accepts only `--help` and `--version`; otherwise it starts the terminal app.
 
 ## Tokens
 
@@ -32,17 +32,27 @@ Tokens are held in memory only, sent only to the matching API host, and never lo
 
 - `REPOHUB_CLONE_DIR`: where clones go. Default `~/playground`.
 - Shelves: edit `src/repohub/core/shelves.yaml`. Each shelf has a `name`, optional `topic`, `min_stars` and `days` (recent push window).
-- Cache and favorites live in a SQLite file `repohub.db` in your user data directory (via platformdirs).
+- Cache and favorites live in one SQLite file, `repohub.db`, in your user data directory (via platformdirs): `~/.local/share/repohub/repohub.db` on Linux. The cache is never purged; expired entries are only overwritten.
+- `src/repohub/core/shelves.yaml` is read from the installed package, so edits take effect only with an editable install (`-e`, as above); otherwise edit the installed copy.
+- If a token is rejected (HTTP 401), RepoHub drops it for that host and retries the request once anonymously; if the anonymous request is also rejected you get a "token rejected" error.
+
+## Terminal key bindings
+
+- Enter: open the selected shelf or repository.
+- `f`: favorite or unfavorite (repository screen).
+- `c`: clone (repository screen), then `y` to confirm or `n` / Escape to cancel.
+- Ctrl+F: show favorites. Escape: back (from a repository) or return to the shelves.
+- Ctrl+Q: quit.
 
 ## Security
 
-- The web server binds to loopback (`127.0.0.1`) by default and only accepts the Host headers `127.0.0.1` and `localhost`. Passing a non-loopback `--host` prints a warning.
-- Favorite and clone POSTs require a per-session token.
+- The web server binds to loopback (`127.0.0.1`) by default and only accepts the Host headers `127.0.0.1` and `localhost`. Passing a non-loopback `--host` prints a warning, and in practice the Host allow-list still refuses requests addressed to any name other than `127.0.0.1` or `localhost`.
+- Favorite and clone POSTs require a per-session token. It is regenerated on every launch, so a tab left open across a restart shows an error until it is reloaded.
 - READMEs are rendered with markdown-it and sanitised with nh3; link URLs are validated. A Content-Security-Policy restricts scripts and other resources to the app itself.
 - The terminal app renders all untrusted text as plain `Text` (no markup interpretation) and opens links only when they are http or https.
 - Control characters are stripped from provider data at the provider boundary.
 - README text is capped at 200,000 characters.
-- Cloning is restricted: only `https` URLs on `github.com` or `gitlab.com`; shallow (`--depth 1`); no install or build steps are run; the URL is validated strictly and rebuilt in canonical form; git runs with a locked-down environment (no prompts, https-only protocol, no system or global git config); a failed clone is cleaned up.
+- Cloning is restricted: only `https` URLs on `github.com` or `gitlab.com`; shallow (`--depth 1`); no install or build steps are run; the URL is validated strictly and rebuilt in canonical form; git runs with a locked-down environment (no prompts, https-only protocol, no system or global git config; `GIT_CONFIG_GLOBAL=/dev/null`, so proxy or credential-helper setups must be given through environment variables); a failed clone is cleaned up.
 
 ## Tests
 
@@ -61,6 +71,8 @@ Known limitations:
 
 - Results from both hosts are deduplicated by `owner/name`, so different repositories with the same owner and name on the two hosts are merged.
 - GitLab search results carry no language unless a language filter is used.
-- Repositories with an unknown push date are excluded by recency filters.
+- Recency filters drop repositories with an unknown push date.
 - Remote images in READMEs can load in the web UI (the CSP allows `img-src *`), which exposes your IP address to those hosts.
-- GitLab cannot express some filters, such as minimum stars, so they are applied client-side and a page of results can shrink after filtering.
+- The GitLab minimum-stars filter is applied client-side, so a page of results can shrink after filtering.
+- The cache is never purged.
+- Cloning ignores your global git config, so proxy or credential-helper setups need environment variables.
