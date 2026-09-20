@@ -1,3 +1,4 @@
+from pathlib import Path
 import subprocess
 
 import pytest
@@ -151,3 +152,64 @@ def test_clone_root_that_is_a_file_is_clone_error(tmp_path):
     with pytest.raises(CloneError, match="cannot create destination folder"):
         clone("https://github.com/o/r.git", f, runner=lambda *a, **k: ran.append(1))
     assert ran == [] and f.read_text() == "x"
+
+
+# --- concurrent clones of the same target ---
+import threading
+
+
+def _blocking_runner(started, release, rc=0):
+    def runner(args, **kwargs):
+        started.set()
+        assert release.wait(5)
+        if rc == 0:
+            target = Path(args[-1])
+            target.mkdir(parents=True)
+            (target / "file.txt").write_text("done")
+        return subprocess.CompletedProcess(args, rc, stdout="", stderr="fatal: boom" if rc else "")
+
+    return runner
+
+
+def test_concurrent_clone_of_same_target_is_refused_and_keeps_winner(tmp_path):
+    started, release = threading.Event(), threading.Event()
+    result = {}
+
+    def first():
+        result["path"] = clone("https://github.com/a/b", tmp_path, runner=_blocking_runner(started, release))
+
+    t = threading.Thread(target=first)
+    t.start()
+    assert started.wait(5)
+    with pytest.raises(CloneError, match="in progress"):
+        clone("https://github.com/a/b", tmp_path, runner=lambda *a, **k: pytest.fail("must not run git"))
+    release.set()
+    t.join(5)
+    assert result["path"] == tmp_path.resolve() / "b"
+    assert (tmp_path / "b" / "file.txt").read_text() == "done"
+
+
+def test_claim_released_after_success_and_failure(tmp_path):
+    ok = threading.Event()
+    ok.set()
+    failing = _blocking_runner(threading.Event(), ok, rc=1)
+    with pytest.raises(CloneError, match="boom"):
+        clone("https://github.com/a/b", tmp_path, runner=failing)
+    assert clone("https://github.com/a/b", tmp_path, runner=_blocking_runner(threading.Event(), ok)).name == "b"
+    with pytest.raises(CloneError, match="exists"):
+        clone("https://github.com/a/b", tmp_path, runner=failing)
+    (tmp_path / "b").rename(tmp_path / "moved")
+    assert clone("https://github.com/a/b", tmp_path, runner=_blocking_runner(threading.Event(), ok)).name == "b"
+
+
+def test_different_targets_clone_concurrently(tmp_path):
+    started, release = threading.Event(), threading.Event()
+    t = threading.Thread(target=lambda: clone("https://github.com/a/one", tmp_path, runner=_blocking_runner(started, release)))
+    t.start()
+    assert started.wait(5)
+    other = threading.Event()
+    other.set()
+    assert clone("https://github.com/a/two", tmp_path, runner=_blocking_runner(threading.Event(), other)).name == "two"
+    release.set()
+    t.join(5)
+    assert (tmp_path / "one").is_dir()

@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import threading
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -11,6 +12,10 @@ from repohub.core.providers.base import valid_slug
 
 HOSTS = {"github": "github.com", "gitlab": "gitlab.com"}
 _NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
+
+
+_IN_FLIGHT: set[Path] = set()
+_LOCK = threading.Lock()
 
 
 class CloneError(Exception):
@@ -67,6 +72,20 @@ def clone(url: str, dest_root: Path | str, shallow: bool = True, runner=subproce
     hostname, path, _ = _validate(url)
     target = plan_clone(url, dest_root)
     canonical = f"https://{hostname}/{path}.git"
+    with _LOCK:
+        if target in _IN_FLIGHT:
+            raise CloneError("a clone of this repository is already in progress")
+        _IN_FLIGHT.add(target)
+    try:
+        if target.exists():  # re-check under our claim: never clean up a folder we did not create
+            raise CloneError(f"{target} already exists")
+        return _run_clone(canonical, target, shallow, runner)
+    finally:
+        with _LOCK:
+            _IN_FLIGHT.discard(target)
+
+
+def _run_clone(canonical: str, target: Path, shallow: bool, runner) -> Path:
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
     except OSError:
