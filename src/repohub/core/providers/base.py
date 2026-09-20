@@ -17,7 +17,7 @@ class RateLimited(ProviderError):
 
 
 def valid_slug(slug: str, host: str = "github") -> bool:
-    if not _SLUG.match(slug):
+    if not _SLUG.fullmatch(slug):
         return False
     parts = slug.split("/")
     if any(p in (".", "..") for p in parts):

@@ -87,7 +87,7 @@ async def test_missing_readme_and_release_are_none():
 @respx.mock
 async def test_invalid_slug_never_reaches_network():
     p = GitHubProvider()
-    for bad in ("../etc/passwd", "o/r/extra", "o", "o/../x", "o/r?x=1"):
+    for bad in ("../etc/passwd", "o/r/extra", "o", "o/../x", "o/r?x=1", "o/r\n", "o/..\n"):
         with pytest.raises(ProviderError, match="invalid"):
             await p.repo(bad)
     assert respx.calls.call_count == 0
