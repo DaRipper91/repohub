@@ -67,7 +67,10 @@ def clone(url: str, dest_root: Path | str, shallow: bool = True, runner=subproce
     hostname, path, _ = _validate(url)
     target = plan_clone(url, dest_root)
     canonical = f"https://{hostname}/{path}.git"
-    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        raise CloneError("cannot create destination folder") from None
     args = ["git", "clone"] + (["--depth", "1"] if shallow else []) + ["--", canonical, str(target)]
     env = {
         **os.environ,

@@ -198,3 +198,16 @@ async def test_refresh_favorites_is_concurrency_bounded():
     await hub.refresh_favorites(max_age=86400)
     assert Counting.peak <= 8
     assert all(r.stars == 5 for r in hub.favorites.list()) and len(hub.favorites.list()) == 30
+
+
+async def test_detail_caps_huge_readme():
+    from repohub.core.hub import MAX_README_CHARS
+    gh = FakeProvider("github", [mk("github", "o/r")], readme="x" * 250_000)
+    d = await make_hub(gh).detail("github", "o/r")
+    assert d.readme.startswith("x" * MAX_README_CHARS) and d.readme.endswith("\n\n_[README truncated]_")
+    assert len(d.readme) < 200_100
+
+
+async def test_detail_leaves_short_readme_alone():
+    gh = FakeProvider("github", [mk("github", "o/r")], readme="short")
+    assert (await make_hub(gh).detail("github", "o/r")).readme == "short"

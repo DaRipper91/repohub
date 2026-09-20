@@ -125,3 +125,25 @@ async def test_repo_survives_malformed_languages():
     respx.get(f"{API}/projects/7/languages").mock(return_value=httpx.Response(200, json=["Rust"]))
     r = await GitLabProvider().repo("g/sub/p")
     assert r.language == ""
+
+
+@respx.mock
+async def test_untrusted_text_is_cleaned():
+    item = dict(ITEM, description="hi\x1b[2J there", topics=["t\x00ui"], license={"name": "M\x1bIT"})
+    respx.get(f"{API}/projects").mock(return_value=httpx.Response(200, json=[item]))
+    r = (await GitLabProvider().search("x", SearchFilters(language="Ru\x1bst")))[0]
+    assert r.description == "hi[2J there" and r.topics == ("tui",) and r.license == "MIT"
+    assert r.language == "Rust"
+
+
+@respx.mock
+async def test_readme_and_release_text_cleaned():
+    respx.get(f"{API}/projects/g%2Fp/repository/files/README.md/raw").mock(
+        return_value=httpx.Response(200, text="# Hi\x1b[2J\nbody"))
+    respx.get(f"{API}/projects/g%2Fp/releases").mock(return_value=httpx.Response(200, json=[{
+        "tag_name": "v1\x1b", "released_at": None,
+        "assets": {"links": [{"name": "a\x1b.tgz", "url": "https://x/y"}]}}]))
+    p = GitLabProvider()
+    assert await p.readme("g/p") == "# Hi[2J\nbody"
+    rel = await p.latest_release("g/p")
+    assert rel.tag == "v1" and rel.assets[0].name == "a.tgz"

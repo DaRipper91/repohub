@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+from urllib.parse import urlparse
 
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.screen import ModalScreen, Screen
@@ -30,7 +32,7 @@ class ConfirmClone(ModalScreen[bool]):
 
 
 class DetailScreen(Screen):
-    BINDINGS = [Binding("escape", "app.pop_screen", "Back"), Binding("f", "favorite", "Favorite"),
+    BINDINGS = [Binding("escape", "back", "Back"), Binding("f", "favorite", "Favorite"),
                 Binding("c", "clone", "Clone")]
 
     def __init__(self, hub, host: str, slug: str, clone_root, cloner):
@@ -41,7 +43,7 @@ class DetailScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Static("Loading…", id="meta", markup=False)
-        yield Markdown("", id="readme")
+        yield Markdown("", id="readme", open_links=False)
         yield Footer()
 
     def on_mount(self) -> None:
@@ -51,26 +53,51 @@ class DetailScreen(Screen):
         meta = self.query_one("#meta", Static)
         try:
             self.detail = await self.hub.detail(self.host, self.slug)
-        except ProviderError as e:
+            self._render_meta()
+            await self.query_one("#readme", Markdown).update(self.detail.readme or "_No README._")
+        except Exception as e:  # never let a worker crash take the app down
+            self.detail = None
             meta.update(f"Could not load {self.slug}: {e}")
-            return
+
+    def _render_meta(self) -> None:
         r, rel = self.detail.repo, self.detail.release
         release = f"{rel.tag}{' (arm64 available)' if rel.has_arm64 else ''}" if rel else "no releases"
         star = "★ favorited" if self.hub.favorites.is_favorite(r.key) else ""
-        meta.update(f"{r.slug} [{r.host}]  ★ {r.stars}  {r.language or 'n/a'}  {r.license or 'no license'}  {star}\n"
-                    f"{r.description}\nRelease: {release}")
-        await self.query_one("#readme", Markdown).update(self.detail.readme or "_No README._")
+        self.query_one("#meta", Static).update(
+            f"{r.slug} [{r.host}]  ★ {r.stars}  {r.language or 'n/a'}  {r.license or 'no license'}  {star}\n"
+            f"{r.description}\nRelease: {release}")
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+        self.app.refresh_current_view()
+
+    def on_markdown_link_clicked(self, event: Markdown.LinkClicked) -> None:
+        event.stop()
+        try:
+            scheme = urlparse(event.href).scheme.lower()
+        except ValueError:
+            scheme = ""
+        if scheme in ("http", "https"):
+            self.app.open_url(event.href)
+        else:
+            self.notify("Blocked non-web link", severity="warning")
 
     def action_favorite(self) -> None:
         if self.detail is None:
+            self.notify("Still loading")
             return
         key = self.detail.repo.key
-        if self.hub.favorites.is_favorite(key):
-            self.hub.favorites.remove(key)
-            self.notify("Removed from favorites")
-        else:
-            self.hub.favorites.add(self.detail.repo)
-            self.notify("Added to favorites")
+        try:
+            if self.hub.favorites.is_favorite(key):
+                self.hub.favorites.remove(key)
+                self.notify("Removed from favorites")
+            else:
+                self.hub.favorites.add(self.detail.repo)
+                self.notify("Added to favorites")
+        except Exception as e:
+            self.notify(f"Could not update favorites: {e}", severity="error")
+            return
+        self._render_meta()
 
     def action_clone(self) -> None:
         try:
@@ -89,7 +116,7 @@ class DetailScreen(Screen):
     async def _run_clone(self, url: str) -> None:
         try:
             target = await asyncio.to_thread(self.cloner, url, self.clone_root)
-        except CloneError as e:
+        except Exception as e:
             self.notify(f"Clone failed: {e}", severity="error")
         else:
             self.notify(f"Cloned to {target}")
@@ -103,6 +130,7 @@ class RepoHubApp(App):
         super().__init__()
         self.hub, self.clone_root, self.cloner = hub, clone_root, cloner
         self.shelves = load_shelves() if shelves is None else shelves
+        self.view = "shelves"
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -121,26 +149,44 @@ class RepoHubApp(App):
         self.query_one("#status", Static).update(text)
 
     def action_home(self) -> None:
+        self.workers.cancel_node(self)  # a late search/shelf/favorites result must not overwrite the shelves
+        self.view = "shelves"
         t = self._table()
         t.clear(columns=True)
         t.add_columns("Shelf", "Topic")
         for i, s in enumerate(self.shelves):
-            t.add_row(s.name, s.topic or s.query, key=f"shelf:{i}")
+            t.add_row(Text(s.name), Text(s.topic or s.query), key=f"shelf:{i}")
         self._status("Shelves. Press Enter on one, or type a search above.")
 
     def action_favorites(self) -> None:
         self.run_worker(self._show_favorites(), exclusive=True)
 
     async def _show_favorites(self) -> None:
-        await self.hub.refresh_favorites()
-        self._show_repos(self.hub.favorites.list(), "Favorites")
+        try:
+            await self.hub.refresh_favorites()
+        except Exception as e:
+            self.notify(f"Could not refresh favorites: {e}", severity="error")
+        self._show_repos(self.hub.favorites.list(), "Favorites", view="favorites")
 
-    def _show_repos(self, repos, status: str) -> None:
+    def refresh_current_view(self) -> None:
+        """Re-render the favorites table from the store (no network), e.g. after unfavoriting."""
+        if self.view == "favorites":
+            self._show_repos(self.hub.favorites.list(), "Favorites", view="favorites")
+
+    def _show_repos(self, repos, status: str, view: str = "results") -> None:
+        self.view = view
         t = self._table()
         t.clear(columns=True)
         t.add_columns("Repo", "Host", "Stars", "Lang", "Description")
+        seen: set[str] = set()
         for r in repos:
-            t.add_row(r.slug, r.host, str(r.stars), r.language or "n/a", r.description[:70], key=f"repo:{r.host}:{r.slug}")
+            key = f"repo:{r.host}:{r.slug}"
+            if key in seen:
+                continue
+            seen.add(key)
+            # Text objects are not markup-parsed, so untrusted values cannot inject markup or actions.
+            t.add_row(Text(r.slug), Text(r.host), Text(str(r.stars)), Text(r.language or "n/a"),
+                      Text(r.description[:70]), key=key)
         self._status(status)
 
     def _show_result(self, result, label: str) -> None:
@@ -157,11 +203,23 @@ class RepoHubApp(App):
             self.run_worker(self._search(query), exclusive=True)
 
     async def _search(self, query: str) -> None:
-        self._show_result(await self.hub.search(query), f"Results for '{query}'")
+        try:
+            result = await self.hub.search(query)
+        except Exception as e:
+            self._status(f"Search failed: {e}")
+            self.notify(f"Search failed: {e}", severity="error")
+            return
+        self._show_result(result, f"Results for '{query}'")
 
     async def _open_shelf(self, index: int) -> None:
         shelf = self.shelves[index]
-        self._show_result(await self.hub.shelf(shelf), shelf.name)
+        try:
+            result = await self.hub.shelf(shelf)
+        except Exception as e:
+            self._status(f"Could not load shelf: {e}")
+            self.notify(f"Could not load shelf: {e}", severity="error")
+            return
+        self._show_result(result, shelf.name)
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         key = event.row_key.value or ""

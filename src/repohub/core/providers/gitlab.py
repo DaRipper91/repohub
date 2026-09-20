@@ -6,6 +6,7 @@ from urllib.parse import quote
 import httpx
 
 from repohub.core.models import Asset, Release, Repo, SearchFilters, parse_arch
+from repohub.core.textsafe import clean_text
 from repohub.core.providers.base import ProviderError, RateLimited, guard_parse, safe_url, valid_slug
 
 README_NAMES = ("README.md", "README.markdown", "README.rst", "README.txt", "README")
@@ -13,9 +14,9 @@ README_NAMES = ("README.md", "README.markdown", "README.rst", "README.txt", "REA
 
 def _to_repo(item: dict, language: str = "") -> Repo:
     return Repo(
-        host="gitlab", slug=item["path_with_namespace"], url=safe_url(item["web_url"]) or f'https://gitlab.com/{item["path_with_namespace"]}', description=item.get("description") or "",
-        stars=item.get("star_count", 0), language=language, license=(item.get("license") or {}).get("name") or "",
-        topics=tuple(item.get("topics") or item.get("tag_list") or ()), pushed_at=item.get("last_activity_at") or "",
+        host="gitlab", slug=clean_text(item["path_with_namespace"]), url=safe_url(item["web_url"]) or f'https://gitlab.com/{item["path_with_namespace"]}', description=clean_text(item.get("description")),
+        stars=item.get("star_count", 0), language=clean_text(language), license=clean_text((item.get("license") or {}).get("name")),
+        topics=tuple(clean_text(t) for t in (item.get("topics") or item.get("tag_list") or ())), pushed_at=item.get("last_activity_at") or "",
         archived=bool(item.get("archived")), forks=item.get("forks_count", 0), homepage="",
     )
 
@@ -94,7 +95,7 @@ class GitLabProvider:
         for name in README_NAMES:
             resp = await self._get(f"/projects/{enc}/repository/files/{quote(name, safe='')}/raw", {"ref": "HEAD"})
             if resp is not None:
-                return resp.text
+                return clean_text(resp.text, multiline=True)
         return None
 
     @guard_parse
@@ -106,7 +107,7 @@ class GitLabProvider:
             return None
         j = items[0]
         assets = tuple(
-            Asset(a["name"], 0, a.get("direct_asset_url") or a["url"], parse_arch(a["name"]))
+            Asset(clean_text(a["name"]), 0, a.get("direct_asset_url") or a["url"], parse_arch(a["name"]))
             for a in (j.get("assets") or {}).get("links", [])
         )
-        return Release(j["tag_name"], j.get("released_at"), assets)
+        return Release(clean_text(j["tag_name"]), j.get("released_at"), assets)

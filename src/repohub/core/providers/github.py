@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 
 from repohub.core.models import Asset, Release, Repo, SearchFilters, parse_arch
+from repohub.core.textsafe import clean_text
 from repohub.core.providers.base import ProviderError, RateLimited, guard_parse, safe_url, valid_slug
 
 
@@ -11,9 +12,9 @@ def _to_repo(item: dict) -> Repo:
     if lic == "NOASSERTION":
         lic = "other"
     return Repo(
-        host="github", slug=item["full_name"], url=safe_url(item["html_url"]) or f'https://github.com/{item["full_name"]}', description=item.get("description") or "",
-        stars=item["stargazers_count"], language=item.get("language") or "", license=lic,
-        topics=tuple(item.get("topics") or ()), pushed_at=item.get("pushed_at") or "",
+        host="github", slug=clean_text(item["full_name"]), url=safe_url(item["html_url"]) or f'https://github.com/{item["full_name"]}', description=clean_text(item.get("description")),
+        stars=item["stargazers_count"], language=clean_text(item.get("language")), license=clean_text(lic),
+        topics=tuple(clean_text(t) for t in (item.get("topics") or ())), pushed_at=item.get("pushed_at") or "",
         archived=bool(item.get("archived")), forks=item.get("forks_count", 0), homepage=safe_url(item.get("homepage")),
     )
 
@@ -82,7 +83,7 @@ class GitHubProvider:
     async def readme(self, slug: str) -> str | None:
         self._check_slug(slug)
         resp = await self._get(f"/repos/{slug}/readme", accept="application/vnd.github.raw+json")
-        return resp.text if resp is not None else None
+        return clean_text(resp.text, multiline=True) if resp is not None else None
 
     @guard_parse
     async def latest_release(self, slug: str) -> Release | None:
@@ -91,6 +92,6 @@ class GitHubProvider:
         if resp is None:
             return None
         j = resp.json()
-        assets = tuple(Asset(a["name"], a.get("size", 0), a["browser_download_url"], parse_arch(a["name"]))
+        assets = tuple(Asset(clean_text(a["name"]), a.get("size", 0), a["browser_download_url"], parse_arch(a["name"]))
                        for a in j.get("assets", []))
-        return Release(j["tag_name"], j.get("published_at"), assets)
+        return Release(clean_text(j["tag_name"]), j.get("published_at"), assets)

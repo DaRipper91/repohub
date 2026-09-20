@@ -142,3 +142,12 @@ def test_clone_locks_down_git_environment(tmp_path):
     assert env["GIT_ALLOW_PROTOCOL"] == "https"
     assert env["GIT_CONFIG_NOSYSTEM"] == "1"
     assert env["GIT_CONFIG_GLOBAL"] == os.devnull
+
+
+def test_clone_root_that_is_a_file_is_clone_error(tmp_path):
+    f = tmp_path / "afile"
+    f.write_text("x")
+    ran = []
+    with pytest.raises(CloneError, match="cannot create destination folder"):
+        clone("https://github.com/o/r.git", f, runner=lambda *a, **k: ran.append(1))
+    assert ran == [] and f.read_text() == "x"

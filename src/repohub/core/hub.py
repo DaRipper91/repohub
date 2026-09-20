@@ -16,6 +16,7 @@ SEARCH_TTL = 600
 DETAIL_TTL = 3600
 DEGRADED_TTL = 60
 REFRESH_CONCURRENCY = 8
+MAX_README_CHARS = 200_000
 
 
 @dataclass
@@ -86,6 +87,8 @@ class Hub:
                 raise part
         readme = None if isinstance(readme, BaseException) else readme
         release = None if isinstance(release, BaseException) else release
+        if readme is not None and len(readme) > MAX_README_CHARS:
+            readme = readme[:MAX_README_CHARS] + "\n\n_[README truncated]_"
         detail = Detail(repo, readme, release)
         self.cache.set(key, detail.to_dict(), DEGRADED_TTL if degraded else DETAIL_TTL)
         return detail

@@ -129,3 +129,23 @@ async def test_release_asset_missing_download_url_is_provider_error():
         "tag_name": "v1", "published_at": None, "assets": [{"name": "a.zip", "size": 1}]}))
     with pytest.raises(ProviderError):
         await GitHubProvider().latest_release("o/r")
+
+
+@respx.mock
+async def test_untrusted_text_is_cleaned():
+    item = dict(ITEM, description="hi\x1b[2J‮ there", language="Ru\x1bst", topics=["t\x00ui"])
+    respx.get(f"{API}/search/repositories").mock(return_value=httpx.Response(200, json={"items": [item]}))
+    r = (await GitHubProvider().search("x", SearchFilters()))[0]
+    assert r.description == "hi[2J there" and r.language == "Rust" and r.topics == ("tui",)
+
+
+@respx.mock
+async def test_readme_and_release_text_cleaned():
+    respx.get(f"{API}/repos/o/r/readme").mock(return_value=httpx.Response(200, text="# Hi\x1b[2J\nbody\x9b"))
+    respx.get(f"{API}/repos/o/r/releases/latest").mock(return_value=httpx.Response(200, json={
+        "tag_name": "v1\x1b", "published_at": None,
+        "assets": [{"name": "a\x1b-arm64.tgz", "size": 1, "browser_download_url": "https://x/y"}]}))
+    p = GitHubProvider()
+    assert await p.readme("o/r") == "# Hi[2J\nbody"
+    rel = await p.latest_release("o/r")
+    assert rel.tag == "v1" and rel.assets[0].name == "a-arm64.tgz"
