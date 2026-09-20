@@ -25,4 +25,15 @@ class Shelf:
 
 def load_shelves(path: Path | str | None = None) -> list[Shelf]:
     text = Path(path).read_text() if path else resources.files("repohub.core").joinpath("shelves.yaml").read_text()
-    return [Shelf(**item) for item in yaml.safe_load(text)]
+    data = yaml.safe_load(text) or []
+    if not isinstance(data, list):
+        raise ValueError("shelves file must contain a list")
+    shelves = []
+    for i, item in enumerate(data):
+        if not isinstance(item, dict):
+            raise ValueError(f"invalid shelf #{i}: expected a mapping, got {type(item).__name__}")
+        try:
+            shelves.append(Shelf(**item))
+        except TypeError as e:
+            raise ValueError(f"invalid shelf #{i}: {e}") from e
+    return shelves

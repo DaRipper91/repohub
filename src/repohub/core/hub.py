@@ -14,6 +14,8 @@ from repohub.core.store import Favorites
 
 SEARCH_TTL = 600
 DETAIL_TTL = 3600
+DEGRADED_TTL = 60
+REFRESH_CONCURRENCY = 8
 
 
 @dataclass
@@ -73,19 +75,32 @@ class Hub:
             if stale is not None:
                 return Detail.from_dict(stale)
             raise
+        degraded = False
+        for part in (readme, release):
+            if isinstance(part, BaseException) and not isinstance(part, Exception):
+                raise part
+        for part in (readme, release):
+            if isinstance(part, ProviderError):
+                degraded = True
+            elif isinstance(part, Exception):
+                raise part
         readme = None if isinstance(readme, BaseException) else readme
         release = None if isinstance(release, BaseException) else release
         detail = Detail(repo, readme, release)
-        self.cache.set(key, detail.to_dict(), DETAIL_TTL)
+        self.cache.set(key, detail.to_dict(), DEGRADED_TTL if degraded else DETAIL_TTL)
         return detail
 
     async def refresh_favorites(self, max_age: float = 86400) -> None:
+        sem = asyncio.Semaphore(REFRESH_CONCURRENCY)
+
         async def one(repo: Repo) -> None:
             provider = self.providers.get(repo.host)
             if provider is None:
                 return
             try:
-                self.favorites.update(await provider.repo(repo.slug))
+                async with sem:
+                    fresh = await provider.repo(repo.slug)
+                self.favorites.update(fresh)
             except ProviderError:
                 pass
 

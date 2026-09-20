@@ -96,3 +96,105 @@ async def test_refresh_favorites_updates_only_stale_entries():
     clock.t += 90_000
     await hub.refresh_favorites(max_age=86400)
     assert hub.favorites.list()[0].stars == 77
+
+
+class FlakyReadme(FakeProvider):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.readme_calls = 0
+
+    async def readme(self, slug):
+        self.readme_calls += 1
+        if self.readme_calls == 1:
+            raise RateLimited("github", "rate limited")
+        return "# back"
+
+
+async def test_failed_readme_is_cached_only_briefly():
+    clock = Clock()
+    gh = FlakyReadme("github", [mk("github", "o/r")])
+    hub = make_hub(gh, clock=clock)
+    assert (await hub.detail("github", "o/r")).readme is None
+    clock.t += 61
+    assert (await hub.detail("github", "o/r")).readme == "# back"
+    assert gh.readme_calls == 2
+
+
+async def test_legitimately_missing_readme_is_cached_for_full_ttl():
+    clock = Clock()
+    gh = FakeProvider("github", [mk("github", "o/r")], readme=None)
+    hub = make_hub(gh, clock=clock)
+    await hub.detail("github", "o/r")
+    clock.t += 61
+    await hub.detail("github", "o/r")
+    assert gh.calls == 1
+
+
+async def test_failed_release_degrades_with_short_ttl():
+    class BadRelease(FakeProvider):
+        async def latest_release(self, slug):
+            raise ProviderError("github", "boom")
+
+    clock = Clock()
+    gh = BadRelease("github", [mk("github", "o/r")])
+    hub = make_hub(gh, clock=clock)
+    d = await hub.detail("github", "o/r")
+    assert d.release is None
+    clock.t += 61
+    await hub.detail("github", "o/r")
+    assert gh.calls == 2
+
+
+async def test_cancelled_error_in_readme_propagates_and_is_not_cached():
+    import asyncio
+
+    class Cancel(FakeProvider):
+        async def readme(self, slug):
+            raise asyncio.CancelledError()
+
+    gh = Cancel("github", [mk("github", "o/r")])
+    hub = make_hub(gh)
+    try:
+        await hub.detail("github", "o/r")
+    except asyncio.CancelledError:
+        pass
+    else:
+        raise AssertionError("expected CancelledError")
+    assert hub.cache.get("detail:github:o/r", allow_stale=True) is None
+
+
+async def test_programming_error_in_readme_propagates():
+    import pytest
+
+    class Bug(FakeProvider):
+        async def readme(self, slug):
+            raise ValueError("bug")
+
+    hub = make_hub(Bug("github", [mk("github", "o/r")]))
+    with pytest.raises(ValueError):
+        await hub.detail("github", "o/r")
+
+
+async def test_refresh_favorites_is_concurrency_bounded():
+    import asyncio
+
+    class Counting(FakeProvider):
+        active = peak = 0
+
+        async def repo(self, slug):
+            type(self).active += 1
+            type(self).peak = max(type(self).peak, type(self).active)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            type(self).active -= 1
+            return mk("github", slug, 5)
+
+    clock = Clock()
+    gh = Counting("github")
+    hub = make_hub(gh, clock=clock)
+    for i in range(30):
+        hub.favorites.add(mk("github", f"o/r{i}", 1))
+    clock.t += 90_000
+    await hub.refresh_favorites(max_age=86400)
+    assert Counting.peak <= 8
+    assert all(r.stars == 5 for r in hub.favorites.list()) and len(hub.favorites.list()) == 30
