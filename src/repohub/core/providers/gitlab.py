@@ -6,7 +6,7 @@ from urllib.parse import quote
 import httpx
 
 from repohub.core.models import Asset, Release, Repo, SearchFilters, parse_arch
-from repohub.core.providers.base import ProviderError, RateLimited, valid_slug
+from repohub.core.providers.base import ProviderError, RateLimited, guard_parse, valid_slug
 
 README_NAMES = ("README.md", "README.markdown", "README.rst", "README.txt", "README")
 
@@ -49,10 +49,11 @@ class GitLabProvider:
             raise ProviderError(self.host, "token rejected")
         if resp.status_code == 404:
             return None
-        if resp.status_code >= 400:
+        if resp.status_code >= 300:  # redirects are deliberately not followed
             raise ProviderError(self.host, f"HTTP {resp.status_code}")
         return resp
 
+    @guard_parse
     async def search(self, query: str, filters: SearchFilters, per_page: int = 30) -> list[Repo]:
         params: dict = {"order_by": "star_count", "sort": "desc", "per_page": per_page, "license": "true"}
         if query.strip():
@@ -66,8 +67,11 @@ class GitLabProvider:
         if filters.pushed_after:
             params["last_activity_after"] = f"{filters.pushed_after}T00:00:00Z"
         resp = await self._get("/projects", params)
+        if resp is None:
+            raise ProviderError(self.host, "unexpected response")
         return [_to_repo(i, filters.language or "") for i in resp.json()]
 
+    @guard_parse
     async def repo(self, slug: str) -> Repo:
         enc = self._check_slug(slug)
         resp = await self._get(f"/projects/{enc}", {"license": "true"})
@@ -80,10 +84,11 @@ class GitLabProvider:
             if langs is not None and langs.json():
                 data = langs.json()
                 language = max(data, key=data.get)
-        except ProviderError:
-            pass
+        except (ProviderError, KeyError, TypeError, ValueError, AttributeError):
+            language = ""
         return _to_repo(item, language)
 
+    @guard_parse
     async def readme(self, slug: str) -> str | None:
         enc = self._check_slug(slug)
         for name in README_NAMES:
@@ -92,6 +97,7 @@ class GitLabProvider:
                 return resp.text
         return None
 
+    @guard_parse
     async def latest_release(self, slug: str) -> Release | None:
         enc = self._check_slug(slug)
         resp = await self._get(f"/projects/{enc}/releases", {"per_page": 1})

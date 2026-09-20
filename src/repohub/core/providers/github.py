@@ -3,7 +3,7 @@ from __future__ import annotations
 import httpx
 
 from repohub.core.models import Asset, Release, Repo, SearchFilters, parse_arch
-from repohub.core.providers.base import ProviderError, RateLimited, valid_slug
+from repohub.core.providers.base import ProviderError, RateLimited, guard_parse, valid_slug
 
 
 def _to_repo(item: dict) -> Repo:
@@ -47,10 +47,11 @@ class GitHubProvider:
             raise ProviderError(self.host, "token rejected")
         if resp.status_code == 404:
             return None
-        if resp.status_code >= 400:
+        if resp.status_code >= 300:  # redirects are deliberately not followed
             raise ProviderError(self.host, f"HTTP {resp.status_code}")
         return resp
 
+    @guard_parse
     async def search(self, query: str, filters: SearchFilters, per_page: int = 30) -> list[Repo]:
         parts = [query.strip()] if query.strip() else []
         if filters.min_stars:
@@ -65,8 +66,11 @@ class GitHubProvider:
             parts.append("archived:false")
         resp = await self._get("/search/repositories",
                                {"q": " ".join(parts), "sort": "stars", "order": "desc", "per_page": per_page})
+        if resp is None:
+            raise ProviderError(self.host, "unexpected response")
         return [_to_repo(i) for i in resp.json()["items"]]
 
+    @guard_parse
     async def repo(self, slug: str) -> Repo:
         self._check_slug(slug)
         resp = await self._get(f"/repos/{slug}")
@@ -74,11 +78,13 @@ class GitHubProvider:
             raise ProviderError(self.host, "repository not found")
         return _to_repo(resp.json())
 
+    @guard_parse
     async def readme(self, slug: str) -> str | None:
         self._check_slug(slug)
         resp = await self._get(f"/repos/{slug}/readme", accept="application/vnd.github.raw+json")
         return resp.text if resp is not None else None
 
+    @guard_parse
     async def latest_release(self, slug: str) -> Release | None:
         self._check_slug(slug)
         resp = await self._get(f"/repos/{slug}/releases/latest")

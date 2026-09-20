@@ -79,3 +79,49 @@ async def test_no_releases_is_none_and_bad_slug_rejected():
     assert await GitLabProvider().latest_release("g/p") is None
     with pytest.raises(ProviderError, match="invalid"):
         await GitLabProvider().repo("g/../x")
+
+
+@respx.mock
+async def test_html_200_body_is_provider_error():
+    respx.get(f"{API}/projects").mock(return_value=httpx.Response(200, text="<html>hi</html>"))
+    with pytest.raises(ProviderError, match="unexpected response"):
+        await GitLabProvider().search("x", SearchFilters())
+
+
+@respx.mock
+async def test_item_missing_slug_is_provider_error():
+    bad = {k: v for k, v in ITEM.items() if k != "path_with_namespace"}
+    respx.get(f"{API}/projects").mock(return_value=httpx.Response(200, json=[bad]))
+    with pytest.raises(ProviderError):
+        await GitLabProvider().search("x", SearchFilters())
+
+
+@respx.mock
+async def test_search_404_is_provider_error():
+    respx.get(f"{API}/projects").mock(return_value=httpx.Response(404))
+    with pytest.raises(ProviderError):
+        await GitLabProvider().search("x", SearchFilters())
+
+
+@respx.mock
+async def test_redirect_is_provider_error_not_followed():
+    respx.get(f"{API}/projects").mock(
+        return_value=httpx.Response(302, headers={"location": "https://evil.example/"}))
+    with pytest.raises(ProviderError, match="HTTP 302"):
+        await GitLabProvider(token="tok").search("x", SearchFilters())
+
+
+@respx.mock
+async def test_readme_redirect_is_error_and_stops():
+    respx.get(f"{API}/projects/g%2Fp/repository/files/README.md/raw").mock(
+        return_value=httpx.Response(302, headers={"location": "https://evil.example/"}))
+    with pytest.raises(ProviderError, match="HTTP 302"):
+        await GitLabProvider().readme("g/p")
+
+
+@respx.mock
+async def test_repo_survives_malformed_languages():
+    respx.get(f"{API}/projects/g%2Fsub%2Fp").mock(return_value=httpx.Response(200, json=ITEM))
+    respx.get(f"{API}/projects/7/languages").mock(return_value=httpx.Response(200, json=["Rust"]))
+    r = await GitLabProvider().repo("g/sub/p")
+    assert r.language == ""

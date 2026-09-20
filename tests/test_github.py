@@ -91,3 +91,41 @@ async def test_invalid_slug_never_reaches_network():
         with pytest.raises(ProviderError, match="invalid"):
             await p.repo(bad)
     assert respx.calls.call_count == 0
+
+
+@respx.mock
+async def test_html_200_body_is_provider_error():
+    respx.get(f"{API}/search/repositories").mock(return_value=httpx.Response(200, text="<html>hi</html>"))
+    with pytest.raises(ProviderError, match="unexpected response"):
+        await GitHubProvider().search("x", SearchFilters())
+
+
+@respx.mock
+async def test_item_missing_slug_is_provider_error():
+    bad = {k: v for k, v in ITEM.items() if k != "full_name"}
+    respx.get(f"{API}/search/repositories").mock(return_value=httpx.Response(200, json={"items": [bad]}))
+    with pytest.raises(ProviderError):
+        await GitHubProvider().search("x", SearchFilters())
+
+
+@respx.mock
+async def test_search_404_is_provider_error():
+    respx.get(f"{API}/search/repositories").mock(return_value=httpx.Response(404))
+    with pytest.raises(ProviderError):
+        await GitHubProvider().search("x", SearchFilters())
+
+
+@respx.mock
+async def test_redirect_is_provider_error_not_followed():
+    respx.get(f"{API}/search/repositories").mock(
+        return_value=httpx.Response(302, headers={"location": "https://evil.example/"}))
+    with pytest.raises(ProviderError, match="HTTP 302"):
+        await GitHubProvider().search("x", SearchFilters())
+
+
+@respx.mock
+async def test_release_asset_missing_download_url_is_provider_error():
+    respx.get(f"{API}/repos/o/r/releases/latest").mock(return_value=httpx.Response(200, json={
+        "tag_name": "v1", "published_at": None, "assets": [{"name": "a.zip", "size": 1}]}))
+    with pytest.raises(ProviderError):
+        await GitHubProvider().latest_release("o/r")
