@@ -56,3 +56,89 @@ def test_clone_failure_becomes_clone_error(tmp_path):
 
     with pytest.raises(CloneError, match="not found"):
         clone("https://github.com/a/b.git", tmp_path, runner=runner)
+
+
+@pytest.mark.parametrize("url", [
+    "https://github.com/a/b\n", "https://github.com/a/b\tx", " https://github.com/a/b",
+    "https://github.com/a/b?x=1", "https://github.com/a/b#f", "https://github.com:/a/b",
+    "https://github.com/a/b;x", None, "",
+])
+def test_plan_rejects_ambiguous_or_odd_input(url, tmp_path):
+    with pytest.raises(CloneError):
+        plan_clone(url, tmp_path)
+
+
+def _ok_runner(seen):
+    def runner(args, **kw):
+        seen["args"], seen["kw"] = args, kw
+        return subprocess.CompletedProcess(args, 0, "", "")
+    return runner
+
+
+def test_clone_passes_canonical_url_to_git(tmp_path):
+    seen = {}
+    target = clone("HTTPS://GitHub.com/a/b", tmp_path, runner=_ok_runner(seen))
+    assert seen["args"][-2] == "https://github.com/a/b.git"
+    assert seen["args"][-1] == str(target)
+
+
+def test_clone_timeout_cleans_up(tmp_path):
+    def runner(args, **kw):
+        (tmp_path / "b").mkdir()
+        raise subprocess.TimeoutExpired(args, 600)
+
+    with pytest.raises(CloneError, match="timed out"):
+        clone("https://github.com/a/b.git", tmp_path, runner=runner)
+    assert not (tmp_path / "b").exists()
+
+
+def test_clone_missing_git(tmp_path):
+    def runner(args, **kw):
+        raise FileNotFoundError("git")
+
+    with pytest.raises(CloneError, match="could not be run"):
+        clone("https://github.com/a/b.git", tmp_path, runner=runner)
+
+
+def test_clone_blank_stderr_gives_generic_message(tmp_path):
+    def runner(args, **kw):
+        return subprocess.CompletedProcess(args, 128, "", "   \n")
+
+    with pytest.raises(CloneError, match="git clone failed"):
+        clone("https://github.com/a/b.git", tmp_path, runner=runner)
+
+
+def test_clone_error_redacts_credentials(tmp_path):
+    def runner(args, **kw):
+        return subprocess.CompletedProcess(
+            args, 128, "", "fatal: unable to access 'https://tok@github.com/a/q/'\n\n")
+
+    with pytest.raises(CloneError) as ei:
+        clone("https://github.com/a/b.git", tmp_path, runner=runner)
+    assert "***" in str(ei.value) and "tok@" not in str(ei.value)
+
+
+def test_failed_clone_removes_partial_dir_only(tmp_path):
+    sibling = tmp_path / "keep"
+    sibling.mkdir()
+
+    def runner(args, **kw):
+        (tmp_path / "b").mkdir()
+        (tmp_path / "b" / "partial").write_text("x")
+        return subprocess.CompletedProcess(args, 128, "", "fatal: boom")
+
+    with pytest.raises(CloneError):
+        clone("https://github.com/a/b.git", tmp_path, runner=runner)
+    assert not (tmp_path / "b").exists()
+    assert sibling.is_dir()
+
+
+def test_clone_locks_down_git_environment(tmp_path):
+    import os
+    seen = {}
+    clone("https://github.com/a/b.git", tmp_path, runner=_ok_runner(seen))
+    env = seen["kw"]["env"]
+    assert env["GIT_TERMINAL_PROMPT"] == "0"
+    assert env["GIT_ALLOW_PROTOCOL"] == "https"
+    assert env["GIT_CONFIG_NOSYSTEM"] == "1"
+    assert env["GIT_CONFIG_GLOBAL"] == os.devnull
