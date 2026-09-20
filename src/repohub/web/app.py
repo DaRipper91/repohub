@@ -144,17 +144,22 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
     async def toggle_favorite(request: Request, host: str = Form(...), slug: str = Form(...), token_field: str = Form("", alias="token")):
         require_token(token_field)
         require_repo(host, slug)
-        key = f"{host}:{slug.lower()}"
+        try:
+            repo = (await hub.detail(host, slug)).repo
+            key = repo.key
+        except NotFound as e:
+            return page(request, "_message.html", status=404, message=str(e))
+        except ProviderError as e:
+            # Offline: still allow removing a favorite stored under the posted key.
+            key = f"{host}:{slug.lower()}"
+            if not hub.favorites.is_favorite(key):
+                return page(request, "_message.html", status=502, message=str(e))
+            repo = None
         if hub.favorites.is_favorite(key):
             hub.favorites.remove(key)
             is_fav = False
         else:
-            try:
-                hub.favorites.add((await hub.detail(host, slug)).repo)
-            except NotFound as e:
-                return page(request, "_message.html", status=404, message=str(e))
-            except ProviderError as e:
-                return page(request, "_message.html", status=502, message=str(e))
+            hub.favorites.add(repo)
             is_fav = True
         return page(request, "_fav_button.html", host=host, slug=slug, is_fav=is_fav)
 
@@ -180,15 +185,15 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
     return app
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     import uvicorn
 
     from repohub.config import build_hub, clone_root
 
-    parser = argparse.ArgumentParser(prog="repohub-web")
+    parser = argparse.ArgumentParser(prog="repohub-web", description="RepoHub web app (binds to loopback by default)")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.host not in ("127.0.0.1", "localhost"):
         print("WARNING: binding to a non-loopback address exposes clone and favorites to your network.")
     uvicorn.run(create_app(build_hub(), clone_root()), host=args.host, port=args.port)

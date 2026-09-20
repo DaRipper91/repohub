@@ -247,3 +247,27 @@ def test_favorites_background_failure_does_not_leak(tmp_path):
             time.sleep(0.02)
         assert not app.state.refresh_tasks
         assert client.get("/favorites").status_code == 200
+
+
+def test_favorite_toggle_uses_canonical_key(tmp_path):
+    class Renamed(FakeProvider):
+        async def repo(self, slug):
+            return mk("github", "o/New", 5)
+
+    hub = make_hub(Renamed("github", []))
+    client = TestClient(create_app(hub, tmp_path, session_token=TOKEN, shelves=[]), base_url="http://localhost")
+    data = {"host": "github", "slug": "o/old", "token": TOKEN}
+    client.post("/favorite", data=data)
+    assert hub.favorites.is_favorite("github:o/new")
+    client.post("/favorite", data=data)
+    assert not hub.favorites.is_favorite("github:o/new") and hub.favorites.list() == []
+
+
+def test_unfavorite_still_works_when_provider_is_down(tmp_path):
+    gh = FakeProvider("github", [mk("github", "o/r")])
+    hub = make_hub(gh)
+    hub.favorites.add(mk("github", "o/r"))
+    gh.detail_error = ProviderError("github", "network error")
+    client = TestClient(create_app(hub, tmp_path, session_token=TOKEN, shelves=[]), base_url="http://localhost")
+    assert client.post("/favorite", data={"host": "github", "slug": "o/r", "token": TOKEN}).status_code == 200
+    assert not hub.favorites.is_favorite("github:o/r")

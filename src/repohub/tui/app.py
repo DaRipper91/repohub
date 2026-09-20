@@ -234,7 +234,15 @@ class RepoHubApp(App):
             self.push_screen(DetailScreen(self.hub, host, slug, self.clone_root, self.cloner))
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
+    import argparse
+
+    from repohub import __version__
+
+    parser = argparse.ArgumentParser(prog="repohub-tui", description="RepoHub terminal app for GitHub and GitLab repositories")
+    parser.add_argument("--version", action="version", version=f"repohub {__version__}")
+    parser.parse_args(argv)
+
     from repohub.config import build_hub, clone_root
 
     RepoHubApp(build_hub(), clone_root()).run()
