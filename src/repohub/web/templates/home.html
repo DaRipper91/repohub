@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block body %}
+{% for i, s in shelves %}
+<section>
+  <h2>{{ s.name }}</h2>
+  <div hx-get="/shelf/{{ i }}" hx-trigger="load delay:{{ i * 400 }}ms" hx-swap="innerHTML"><p class="dim">Loading…</p></div>
+</section>
+{% endfor %}
+{% endblock %}

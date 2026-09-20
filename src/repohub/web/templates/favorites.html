@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block body %}<h2>Favorites</h2>
+<div class="grid">
+{% for r in repos %}
+  <a class="card" href="/repo/{{ r.host }}/{{ r.slug }}"><div class="name">{{ r.slug }} <span class="badge {{ r.host }}">{{ r.host }}</span></div>
+  <p>{{ r.description }}</p><div class="meta">★ {{ r.stars }} · {{ r.language or "n/a" }}</div></a>
+{% else %}<p class="dim">No favorites yet.</p>{% endfor %}
+</div>{% endblock %}

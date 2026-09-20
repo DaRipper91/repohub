@@ -1,0 +1,149 @@
+from __future__ import annotations
+
+import argparse
+import secrets
+from pathlib import Path
+
+import nh3
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from markdown_it import MarkdownIt
+from starlette.middleware.trustedhost import TrustedHostMiddleware
+
+from repohub.core.browse import load_shelves
+from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_clone
+from repohub.core.models import SearchFilters
+from repohub.core.providers.base import ProviderError, valid_slug
+
+HERE = Path(__file__).parent
+HOSTS = ("github", "gitlab")
+CSP = ("default-src 'self'; img-src * data:; style-src 'self' 'unsafe-inline'; script-src 'self'; "
+       "frame-ancestors 'none'; form-action 'self'")
+_md = MarkdownIt("commonmark", {"html": False})
+# Let markdown-it emit every link target; nh3 then strips unsafe schemes such as javascript:
+# (otherwise the raw "[x](javascript:...)" source would be left behind as visible text).
+_md.validateLink = lambda url: True
+
+
+def render_markdown(text: str) -> str:
+    return nh3.clean(_md.render(text or ""), link_rel="noopener noreferrer")
+
+
+def create_app(hub, clone_root, session_token: str | None = None, shelves=None, cloner=do_clone,
+               allowed_hosts=("127.0.0.1", "localhost")) -> FastAPI:
+    token = session_token or secrets.token_urlsafe(32)
+    shelf_list = load_shelves() if shelves is None else shelves
+    templates = Jinja2Templates(directory=str(HERE / "templates"))
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))
+    app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        resp = await call_next(request)
+        resp.headers["Content-Security-Policy"] = CSP
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["Referrer-Policy"] = "no-referrer"
+        return resp
+
+    def page(request: Request, name: str, status: int = 200, **ctx):
+        return templates.TemplateResponse(request, name, {"token": token, "form": {}, "q": "", **ctx}, status_code=status)
+
+    def require_token(value: str) -> None:
+        if not secrets.compare_digest(value or "", token):
+            raise HTTPException(403, "missing or invalid session token")
+
+    def require_repo(host: str, slug: str) -> None:
+        if host not in HOSTS or not valid_slug(slug, host):
+            raise HTTPException(404, "not found")
+
+    @app.get("/", response_class=HTMLResponse)
+    async def home(request: Request):
+        return page(request, "home.html", shelves=list(enumerate(shelf_list)))
+
+    @app.get("/shelf/{index}", response_class=HTMLResponse)
+    async def shelf(request: Request, index: int):
+        if not 0 <= index < len(shelf_list):
+            raise HTTPException(404, "no such shelf")
+        return page(request, "_results.html", result=await hub.shelf(shelf_list[index]), limit=6)
+
+    @app.get("/search", response_class=HTMLResponse)
+    async def search(request: Request, q: str = "", language: str = "", min_stars: int = 0, days: int = 0,
+                     host: str = "both", archived: str = ""):
+        if host != "both" and host not in HOSTS:
+            raise HTTPException(400, "bad host")
+        filters = SearchFilters(language=language or None, min_stars=max(min_stars, 0),
+                                updated_within_days=days or None, hosts=HOSTS if host == "both" else (host,),
+                                include_archived=bool(archived))
+        result = await hub.search(q, filters)
+        return page(request, "search.html", q=q, result=result, limit=None,
+                    form=dict(language=language, min_stars=min_stars, days=days, host=host, archived=archived))
+
+    @app.get("/repo/{host}/{slug:path}", response_class=HTMLResponse)
+    async def repo_page(request: Request, host: str, slug: str):
+        require_repo(host, slug)
+        try:
+            d = await hub.detail(host, slug)
+        except ProviderError as e:
+            return page(request, "_message.html", status=502, message=f"Could not load {slug}: {e}")
+        return page(request, "repo.html", d=d, readme_html=render_markdown(d.readme) if d.readme else "",
+                    is_fav=hub.favorites.is_favorite(d.repo.key))
+
+    @app.get("/favorites", response_class=HTMLResponse)
+    async def favorites_page(request: Request):
+        await hub.refresh_favorites()
+        return page(request, "favorites.html", repos=hub.favorites.list())
+
+    @app.post("/favorite", response_class=HTMLResponse)
+    async def toggle_favorite(request: Request, host: str = Form(...), slug: str = Form(...), token_field: str = Form("", alias="token")):
+        require_token(token_field)
+        require_repo(host, slug)
+        key = f"{host}:{slug.lower()}"
+        if hub.favorites.is_favorite(key):
+            hub.favorites.remove(key)
+            is_fav = False
+        else:
+            try:
+                hub.favorites.add((await hub.detail(host, slug)).repo)
+            except ProviderError as e:
+                return page(request, "_message.html", status=502, message=str(e))
+            is_fav = True
+        return page(request, "_fav_button.html", host=host, slug=slug, is_fav=is_fav)
+
+    @app.get("/clone", response_class=HTMLResponse)
+    async def clone_confirm(request: Request, host: str, slug: str):
+        require_repo(host, slug)
+        try:
+            target = plan_clone(clone_url(host, slug), clone_root)
+        except CloneError as e:
+            return page(request, "_message.html", message=str(e))
+        return page(request, "clone_confirm.html", host=host, slug=slug, target=target)
+
+    @app.post("/clone", response_class=HTMLResponse)
+    async def clone_run(request: Request, host: str = Form(...), slug: str = Form(...), token_field: str = Form("", alias="token")):
+        require_token(token_field)
+        require_repo(host, slug)
+        try:
+            target = await run_in_threadpool(cloner, clone_url(host, slug), clone_root)
+        except CloneError as e:
+            return page(request, "_message.html", message=f"Clone failed: {e}")
+        return page(request, "_message.html", message=f"Cloned to {target}")
+
+    return app
+
+
+def main() -> None:
+    import uvicorn
+
+    from repohub.config import build_hub, clone_root
+
+    parser = argparse.ArgumentParser(prog="repohub-web")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8765)
+    args = parser.parse_args()
+    if args.host not in ("127.0.0.1", "localhost"):
+        print("WARNING: binding to a non-loopback address exposes clone and favorites to your network.")
+    uvicorn.run(create_app(build_hub(), clone_root()), host=args.host, port=args.port)

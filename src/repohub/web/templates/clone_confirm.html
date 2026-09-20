@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block body %}
+<h2>Clone {{ slug }}?</h2>
+<p>This will create:</p><pre>{{ target }}</pre>
+<p class="dim">Shallow clone. No install or build steps are run.</p>
+<form hx-post="/clone" hx-target="#result" hx-swap="innerHTML">
+  <input type="hidden" name="host" value="{{ host }}"><input type="hidden" name="slug" value="{{ slug }}">
+  <input type="hidden" name="token" value="{{ token }}">
+  <button>Confirm clone</button> <a class="button" href="/repo/{{ host }}/{{ slug }}">Cancel</a>
+</form>
+<div id="result"></div>
+{% endblock %}

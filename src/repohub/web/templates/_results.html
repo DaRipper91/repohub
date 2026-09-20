@@ -1,0 +1,13 @@
+{% if result.stale %}<p class="banner warn">Showing cached results.</p>{% endif %}
+{% for host, msg in result.errors.items() %}<p class="banner warn">{{ host }}: {{ msg }}</p>{% endfor %}
+<div class="grid">
+{% for r in (result.repos[:limit] if limit else result.repos) %}
+  <a class="card" href="/repo/{{ r.host }}/{{ r.slug }}">
+    <div class="name">{{ r.slug }} <span class="badge {{ r.host }}">{{ r.host }}</span></div>
+    <p>{{ r.description }}</p>
+    <div class="meta">★ {{ r.stars }} · {{ r.language or "n/a" }} · {{ r.license or "no license" }}</div>
+  </a>
+{% else %}
+  <p class="dim">No results.</p>
+{% endfor %}
+</div>

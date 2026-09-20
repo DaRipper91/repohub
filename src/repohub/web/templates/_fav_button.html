@@ -1,0 +1,5 @@
+<form class="fav" hx-post="/favorite" hx-target="this" hx-swap="outerHTML">
+  <input type="hidden" name="host" value="{{ host }}"><input type="hidden" name="slug" value="{{ slug }}">
+  <input type="hidden" name="token" value="{{ token }}">
+  <button>{{ "★ Favorited" if is_fav else "☆ Favorite" }}</button>
+</form>

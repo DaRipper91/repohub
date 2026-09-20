@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ d.repo.slug }} - RepoHub{% endblock %}
+{% block body %}
+{% set r = d.repo %}
+<article class="detail">
+  <h1>{{ r.slug }} <span class="badge {{ r.host }}">{{ r.host }}</span></h1>
+  {% if r.archived %}<p class="banner warn">This repository is archived.</p>{% endif %}
+  <p>{{ r.description }}</p>
+  <p class="meta">★ {{ r.stars }} · ⑂ {{ r.forks }} · {{ r.language or "n/a" }} · {{ r.license or "no license" }} · last push {{ r.pushed_at[:10] }}</p>
+  <div class="actions">
+    {% with host=r.host, slug=r.slug %}{% include "_fav_button.html" %}{% endwith %}
+    <a class="button" href="/clone?host={{ r.host }}&slug={{ r.slug | urlencode }}">Clone…</a>
+    <a class="button" href="{{ r.url }}" rel="noopener noreferrer">Open on {{ r.host }}</a>
+  </div>
+  <div class="layout">
+    <div class="readme">{% if readme_html %}{{ readme_html | safe }}{% else %}<p class="dim">No README.</p>{% endif %}</div>
+    <aside>
+      <h3>Topics</h3><p>{% for t in r.topics %}<span class="tag">{{ t }}</span> {% else %}<span class="dim">none</span>{% endfor %}</p>
+      {% if r.homepage %}<p><a href="{{ r.homepage }}" rel="noopener noreferrer">Homepage</a></p>{% endif %}
+      <h3>Latest release</h3>
+      {% if d.release %}
+        <p>{{ d.release.tag }} {% if d.release.has_arm64 %}<span class="badge ok">arm64</span>{% endif %}</p>
+        <ul>{% for a in d.release.assets %}<li>{{ a.name }} <span class="dim">({{ a.arch }})</span></li>{% endfor %}</ul>
+      {% else %}<p class="dim">No releases published.</p>{% endif %}
+    </aside>
+  </div>
+</article>
+{% endblock %}
