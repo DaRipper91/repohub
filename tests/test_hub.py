@@ -227,3 +227,22 @@ async def test_detail_serves_stale_on_any_provider_error_except_not_found():
     gh.detail_error = NotFound("github", "repository not found")
     with pytest.raises(NotFound):
         await hub.detail("github", "o/r")
+
+
+async def test_failing_favorite_is_not_refetched_within_max_age():
+    from repohub.core.providers.base import NotFound
+
+    clock = Clock()
+    gh = FakeProvider("github", [mk("github", "o/r")], detail_error=NotFound("github", "repository not found"))
+    hub = make_hub(gh, clock=clock)
+    hub.favorites.add(mk("github", "o/r"))
+    clock.t += 100_000
+    await hub.refresh_favorites()
+    assert gh.calls == 1
+    clock.t += 1000
+    await hub.refresh_favorites()
+    assert gh.calls == 1
+    clock.t += 100_000
+    await hub.refresh_favorites()
+    assert gh.calls == 2
+    assert hub.favorites.list() == [mk("github", "o/r")]

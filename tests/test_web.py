@@ -198,3 +198,52 @@ def test_other_provider_errors_stay_502(tmp_path):
 def test_favorite_toggle_of_missing_repo_is_404(tmp_path):
     r = _not_found_setup(tmp_path).post("/favorite", data={"host": "github", "slug": "o/gone", "token": TOKEN})
     assert r.status_code == 404 and "repository not found" in r.text
+
+
+class Clock:
+    t = 1_000_000.0
+
+    def __call__(self):
+        return self.t
+
+
+def _fav_app(tmp_path, provider_cls, clock):
+    gh = provider_cls("github", [mk("github", "o/r", 5)])
+    hub = make_hub(gh, clock=clock)
+    hub.favorites.add(mk("github", "o/r", 5))
+    clock.t += 200_000  # make the favorite stale
+    app = create_app(hub, tmp_path, session_token=TOKEN, shelves=[])
+    return app, hub, gh
+
+
+def test_favorites_page_does_not_wait_for_the_network(tmp_path):
+    import asyncio
+
+    class Blocking(FakeProvider):
+        gate = None
+
+        async def repo(self, slug):
+            await asyncio.Event().wait()  # never set
+
+    app, hub, gh = _fav_app(tmp_path, Blocking, Clock())
+    with TestClient(app, base_url="http://localhost") as client:
+        r = client.get("/favorites")
+        assert r.status_code == 200 and "o/r" in r.text and "background" in r.text
+
+
+def test_favorites_background_failure_does_not_leak(tmp_path):
+    import time
+
+    class Boom(FakeProvider):
+        async def repo(self, slug):
+            raise RuntimeError("boom")
+
+    app, hub, gh = _fav_app(tmp_path, Boom, Clock())
+    with TestClient(app, base_url="http://localhost") as client:
+        assert client.get("/favorites").status_code == 200
+        for _ in range(100):
+            if not app.state.refresh_tasks:
+                break
+            time.sleep(0.02)
+        assert not app.state.refresh_tasks
+        assert client.get("/favorites").status_code == 200

@@ -296,3 +296,45 @@ async def test_home_cancels_inflight_search(tmp_path):
         await pilot.pause()
         table = app.query_one(DataTable)
         assert table.row_count == 1 and [c.label.plain for c in table.columns.values()] == ["Shelf", "Topic"]
+
+
+async def test_favorites_view_shows_stored_rows_before_refresh_finishes(tmp_path):
+    app, hub = make_app(tmp_path)
+    hub.favorites.add(mk("github", "o/r", 50))
+    gate = asyncio.Event()
+
+    async def slow_refresh(*a, **k):
+        await gate.wait()
+        hub.favorites.update(mk("github", "o/r", 99))
+
+    hub.refresh_favorites = slow_refresh
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+f")
+        await pilot.pause()
+        await pilot.pause()
+        table = app.query_one(DataTable)
+        assert app.view == "favorites" and table.row_count == 1
+        assert table.get_row_at(0)[2].plain == "50"
+        gate.set()
+        await settle(app, pilot)
+        assert app.query_one(DataTable).get_row_at(0)[2].plain == "99"
+
+
+async def test_late_favorites_refresh_does_not_overwrite_other_view(tmp_path):
+    app, hub = make_app(tmp_path)
+    hub.favorites.add(mk("github", "o/r", 50))
+    gate = asyncio.Event()
+
+    async def slow_refresh(*a, **k):
+        await gate.wait()
+
+    hub.refresh_favorites = slow_refresh
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+f")
+        await pilot.pause()
+        app.action_home()
+        gate.set()
+        await pilot.pause()
+        await pilot.pause()
+        assert app.view == "shelves"
+        assert [c.label.plain for c in app.query_one(DataTable).columns.values()] == ["Shelf", "Topic"]

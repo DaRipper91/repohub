@@ -69,3 +69,18 @@ def test_update_refreshes_data_but_keeps_added_at_and_order():
     assert [r.key for r in f.list()] == [b.key, a.key]
     clock.t = 3100.0
     assert [r.key for r in f.stale(max_age=500)] == [b.key]
+
+
+def test_mark_checked_refreshes_timestamp_without_changing_data():
+    clock = Clock()
+    f = Favorites(now=clock)
+    f.add(mk("github", "a/a", 5))
+    clock.t += 1000
+    f.mark_checked(mk("github", "a/a").key)
+    assert f.stale(max_age=500) == [] and f.list() == [mk("github", "a/a", 5)]
+
+
+def test_mark_checked_ignores_unknown_key():
+    f = Favorites()
+    f.mark_checked("github:nope/x")
+    assert f.list() == []

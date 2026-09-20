@@ -107,6 +107,6 @@ class Hub:
                     fresh = await provider.repo(repo.slug)
                 self.favorites.update(fresh)
             except ProviderError:
-                pass
+                self.favorites.mark_checked(repo.key)  # retry at most once per max_age
 
         await asyncio.gather(*(one(r) for r in self.favorites.stale(max_age)))

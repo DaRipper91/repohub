@@ -34,6 +34,12 @@ class Favorites:
                              (json.dumps(repo.to_dict()), self._now(), repo.key))
             self._db.commit()
 
+    def mark_checked(self, key: str) -> None:
+        """Record a refresh attempt for an existing row without changing its data."""
+        with self._lock:
+            self._db.execute("UPDATE favorites SET refreshed_at = ? WHERE key = ?", (self._now(), key))
+            self._db.commit()
+
     def remove(self, key: str) -> None:
         with self._lock:
             self._db.execute("DELETE FROM favorites WHERE key = ?", (key,))

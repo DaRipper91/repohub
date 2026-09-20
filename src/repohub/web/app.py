@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+from contextlib import asynccontextmanager
 import secrets
 from pathlib import Path
 
@@ -43,12 +45,30 @@ def _int_param(raw: str, name: str, maximum: int) -> int:
     return value
 
 
+def _refresh_done(tasks: set):
+    def done(task: asyncio.Task) -> None:
+        tasks.discard(task)
+        if not task.cancelled():
+            task.exception()  # mark as retrieved; a failed background refresh is not fatal
+
+    return done
+
+
 def create_app(hub, clone_root, session_token: str | None = None, shelves=None, cloner=do_clone,
                allowed_hosts=("127.0.0.1", "localhost")) -> FastAPI:
     token = session_token or secrets.token_urlsafe(32)
     shelf_list = load_shelves() if shelves is None else shelves
     templates = Jinja2Templates(directory=str(HERE / "templates"))
-    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    refresh_tasks: set[asyncio.Task] = set()
+
+    @asynccontextmanager
+    async def lifespan(_app):
+        yield
+        for t in list(refresh_tasks):
+            t.cancel()
+
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
+    app.state.refresh_tasks = refresh_tasks
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
@@ -114,7 +134,10 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
 
     @app.get("/favorites", response_class=HTMLResponse)
     async def favorites_page(request: Request):
-        await hub.refresh_favorites()
+        if not refresh_tasks:  # one background refresh at a time; the page never waits for the network
+            task = asyncio.create_task(hub.refresh_favorites())
+            refresh_tasks.add(task)
+            task.add_done_callback(_refresh_done(refresh_tasks))
         return page(request, "favorites.html", repos=hub.favorites.list())
 
     @app.post("/favorite", response_class=HTMLResponse)

@@ -162,11 +162,14 @@ class RepoHubApp(App):
         self.run_worker(self._show_favorites(), exclusive=True)
 
     async def _show_favorites(self) -> None:
+        self._show_repos(self.hub.favorites.list(), "Favorites", view="favorites")
         try:
             await self.hub.refresh_favorites()
         except Exception as e:
             self.notify(f"Could not refresh favorites: {e}", severity="error")
-        self._show_repos(self.hub.favorites.list(), "Favorites", view="favorites")
+            return
+        if self.view == "favorites":
+            self._show_repos(self.hub.favorites.list(), "Favorites", view="favorites")
 
     def refresh_current_view(self) -> None:
         """Re-render the favorites table from the store (no network), e.g. after unfavoriting."""
