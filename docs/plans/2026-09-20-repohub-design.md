@@ -114,3 +114,17 @@ Releases are fetched on demand for the detail page, not during search, so a sear
 ## Out of scope for v1
 
 Accounts or login flows, starring or forking from inside the app, other hosts (Codeberg, Bitbucket), recommendations, and packaging as an installable app.
+
+## Changes made during implementation
+
+- A `Hub` facade (`core/hub.py`) was added so both front ends share caching and stale fallback.
+- Shelves support a `topic` field (GitHub `topic:` qualifier, GitLab `topic=` parameter).
+- `python-multipart` is a dependency, for form posts.
+- Repository slugs are validated (full match) before any API call.
+- Provider hardening: malformed responses and redirects map to `ProviderError`.
+- `Favorites.update` is update-only: it refreshes existing rows and does not insert.
+- Clone hardening: canonical URL, strict validation, locked-down git environment, and cleanup of the target on failure.
+- The Hub caches degraded detail (a failed README or release fetch) for only 60 seconds and caps README text at 200,000 characters.
+- `refresh_favorites` limits concurrency to 8.
+- Web hardening: `safe_url` for API URLs, handling of non-ASCII tokens, range limits on `days` and `min_stars`, a `base-uri` CSP directive, and `app.js` so failed htmx actions show messages.
+- TUI hardening: `Text` cells for untrusted data, `open_links=False` with an http/https allow-list for opening links, worker error handling, and sanitising at the provider boundary.
