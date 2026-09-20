@@ -1,0 +1,24 @@
+- name: Terminal tools
+  topic: tui
+  min_stars: 500
+  days: 365
+- name: Local AI
+  topic: llm
+  min_stars: 1000
+  days: 180
+- name: Retro and emulation
+  topic: emulator
+  min_stars: 500
+  days: 365
+- name: Self-hosted
+  topic: self-hosted
+  min_stars: 1000
+  days: 365
+- name: Creative coding
+  topic: creative-coding
+  min_stars: 300
+  days: 730
+- name: Networking
+  topic: networking
+  min_stars: 1000
+  days: 365
