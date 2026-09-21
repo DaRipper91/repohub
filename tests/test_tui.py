@@ -401,3 +401,84 @@ async def test_hostile_problem_text_is_shown_literally(tmp_path):
             assert f"Results for '{q}'" in status
         assert "[@click=app.quit]" in status and "[/]" in status
         assert app.query_one(DataTable).row_count == 2
+
+
+# ---- notifications never parse dynamic text as markup ---------------------------------------
+
+def record_notify(app):
+    calls = []
+    orig = app.notify
+
+    def spy(message, **kw):
+        calls.append((message, kw))
+        return orig(message, **kw)
+
+    app.notify = spy
+    return calls
+
+
+async def test_clone_error_notification_is_plain_text(tmp_path):
+    def bad(url, root):
+        raise CloneError("fatal: [remote rejected] [/] [@click=app.quit]x[/]")
+
+    app, _ = make_app(tmp_path, cloner=bad)
+    calls = record_notify(app)
+    async with app.run_test() as pilot:
+        await open_first(app, pilot, "tui")
+        await pilot.press("c")
+        await pilot.pause()
+        await pilot.press("y")
+        await settle(app, pilot)
+        await pilot.pause()
+        assert app.is_running
+        assert any("[remote rejected]" in m for m, _ in calls)
+        assert all(kw.get("markup") is False for _, kw in calls)
+
+
+async def test_failing_search_notification_is_plain_text(tmp_path):
+    hub = make_hub(FakeProvider("github"))
+
+    async def boom(*a, **k):
+        raise RuntimeError("[/] [bold")
+
+    hub.search = boom
+    app = RepoHubApp(hub, tmp_path, shelves=[])
+    calls = record_notify(app)
+    async with app.run_test() as pilot:
+        app.query_one(Input).focus()
+        await pilot.press("x", "enter")
+        await settle(app, pilot)
+        await pilot.pause()
+        assert app.is_running
+        assert calls and all(kw.get("markup") is False for _, kw in calls)
+
+
+async def test_favorites_error_notification_is_plain_text(tmp_path):
+    app, hub = make_app(tmp_path)
+
+    async def boom():
+        raise RuntimeError("[/] [bold")
+
+    hub.refresh_favorites = boom
+    calls = record_notify(app)
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+f")
+        await settle(app, pilot)
+        await pilot.pause()
+        assert app.is_running
+        assert calls and all(kw.get("markup") is False for _, kw in calls)
+
+
+async def test_successful_clone_with_markup_path_is_plain_text(tmp_path):
+    app, _ = make_app(tmp_path, cloner=lambda url, root: tmp_path / "[/][@click=app.quit]x[/]")
+    calls = record_notify(app)
+    async with app.run_test() as pilot:
+        await open_first(app, pilot, "tui")
+        await pilot.press("c")
+        await pilot.pause()
+        await pilot.press("y")
+        await settle(app, pilot)
+        await pilot.pause()
+        assert app.is_running
+        assert any("Cloned to" in m for m, _ in calls)
+        assert all(kw.get("markup") is False for _, kw in calls)

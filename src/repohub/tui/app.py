@@ -81,22 +81,22 @@ class DetailScreen(Screen):
         if scheme in ("http", "https"):
             self.app.open_url(event.href)
         else:
-            self.notify("Blocked non-web link", severity="warning")
+            self.notify("Blocked non-web link", severity="warning", markup=False)
 
     def action_favorite(self) -> None:
         if self.detail is None:
-            self.notify("Still loading")
+            self.notify("Still loading", markup=False)
             return
         key = self.detail.repo.key
         try:
             if self.hub.favorites.is_favorite(key):
                 self.hub.favorites.remove(key)
-                self.notify("Removed from favorites")
+                self.notify("Removed from favorites", markup=False)
             else:
                 self.hub.favorites.add(self.detail.repo)
-                self.notify("Added to favorites")
+                self.notify("Added to favorites", markup=False)
         except Exception as e:
-            self.notify(f"Could not update favorites: {e}", severity="error")
+            self.notify(f"Could not update favorites: {e}", severity="error", markup=False)
             return
         self._render_meta()
 
@@ -105,7 +105,7 @@ class DetailScreen(Screen):
             url = clone_url(self.host, self.slug)
             target = plan_clone(url, self.clone_root)
         except CloneError as e:
-            self.notify(str(e), severity="error")
+            self.notify(str(e), severity="error", markup=False)
             return
 
         def done(confirmed: bool | None) -> None:
@@ -118,9 +118,9 @@ class DetailScreen(Screen):
         try:
             target = await asyncio.to_thread(self.cloner, url, self.clone_root)
         except Exception as e:
-            self.notify(f"Clone failed: {e}", severity="error")
+            self.notify(f"Clone failed: {e}", severity="error", markup=False)
         else:
-            self.notify(f"Cloned to {target}")
+            self.notify(f"Cloned to {target}", markup=False)
 
 
 class RepoHubApp(App):
@@ -167,7 +167,7 @@ class RepoHubApp(App):
         try:
             await self.hub.refresh_favorites()
         except Exception as e:
-            self.notify(f"Could not refresh favorites: {e}", severity="error")
+            self.notify(f"Could not refresh favorites: {e}", severity="error", markup=False)
             return
         if self.view == "favorites":
             self._show_repos(self.hub.favorites.list(), "Favorites", view="favorites")
@@ -212,7 +212,7 @@ class RepoHubApp(App):
             result = await self.hub.search(parsed.text, parsed.filters)
         except Exception as e:
             self._status(f"Search failed: {e}")
-            self.notify(f"Search failed: {e}", severity="error")
+            self.notify(f"Search failed: {e}", severity="error", markup=False)
             return
         label = f"Results for '{query}'"
         if parsed.problems:
@@ -225,7 +225,7 @@ class RepoHubApp(App):
             result = await self.hub.shelf(shelf)
         except Exception as e:
             self._status(f"Could not load shelf: {e}")
-            self.notify(f"Could not load shelf: {e}", severity="error")
+            self.notify(f"Could not load shelf: {e}", severity="error", markup=False)
             return
         self._show_result(result, shelf.name)
 
