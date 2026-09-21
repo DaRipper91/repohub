@@ -368,3 +368,162 @@ async def test_fork_and_archived_flags_map():
 async def test_aclose():
     p = ForgejoProvider("codeberg", API)
     await p.aclose()
+
+
+# ---- hardening against hostile configured hosts ----
+from repohub.core.models import MAX_STARS  # noqa: E402
+
+DEEP = b"[" * 100000 + b"]" * 100000
+
+
+def _raw(body: bytes):
+    return httpx.Response(200, content=body, headers={"content-type": "application/json"})
+
+
+@pytest.mark.parametrize("body", [
+    b'{"ok": true, "data": [{"full_name": "o/r", "stars_count": Infinity}]}',
+    b'{"ok": true, "data": [{"full_name": "o/r", "stars_count": NaN}]}',
+    b'{"ok": true, "data": ' + DEEP + b'}',
+])
+@respx.mock
+async def test_hostile_json_search_is_provider_error(body):
+    respx.get(f"{API}/repos/search").mock(return_value=_raw(body))
+    with pytest.raises(ProviderError):
+        await ForgejoProvider("codeberg", API).search("x", SearchFilters())
+
+
+@pytest.mark.parametrize("body", [
+    b'{"full_name": "o/r", "stars_count": Infinity}',
+    DEEP,
+])
+@respx.mock
+async def test_hostile_json_repo_and_release_are_provider_errors(body):
+    respx.get(f"{API}/repos/o/r").mock(return_value=_raw(body))
+    respx.get(f"{API}/repos/o/r/releases/latest").mock(return_value=_raw(body))
+    with pytest.raises(ProviderError):
+        await ForgejoProvider("codeberg", API).repo("o/r")
+    if body is DEEP:
+        with pytest.raises(ProviderError):
+            await ForgejoProvider("codeberg", API).latest_release("o/r")
+
+
+@respx.mock
+async def test_release_size_infinity_is_not_a_raw_exception():
+    respx.get(f"{API}/repos/o/r/releases/latest").mock(return_value=_raw(
+        b'{"tag_name": "v1", "assets": [{"name": "a", "size": Infinity, "browser_download_url": "https://x.example/a"}]}'))
+    r = await ForgejoProvider("codeberg", API).latest_release("o/r")
+    assert r.assets[0].size == 0
+
+
+@pytest.mark.parametrize("value", ["9999-12-31T23:59:59-05:00", "0001-01-01T00:00:00+05:00"])
+@respx.mock
+async def test_out_of_range_date_becomes_empty(value):
+    respx.get(f"{API}/repos/search").mock(return_value=search_resp(dict(ITEM, updated_at=value)))
+    respx.get(f"{API}/repos/o/r").mock(return_value=httpx.Response(200, json=dict(ITEM, updated_at=value)))
+    assert (await ForgejoProvider("codeberg", API).search("x", SearchFilters()))[0].pushed_at == ""
+    assert (await ForgejoProvider("codeberg", API).repo("o/r")).pushed_at == ""
+
+
+BAD_SLUGS = ["../../etc/passwd", "a/b/c", "a b/c", "o/..", "o/r?x=1", "ö/ü", "", "o/" + "r" * 5000, "o", "o/r#f"]
+
+
+@respx.mock
+async def test_search_drops_invalid_slugs_keeps_valid():
+    items = [dict(ITEM, full_name=s) for s in BAD_SLUGS] + [dict(ITEM, full_name="o/good"), dict(ITEM, full_name="o/r\n")]
+    respx.get(f"{API}/repos/search").mock(return_value=search_resp(*items))
+    repos = await ForgejoProvider("codeberg", API).search("x", SearchFilters())
+    assert [r.slug for r in repos] == ["o/good", "o/r"]
+
+
+@pytest.mark.parametrize("slug", BAD_SLUGS)
+@respx.mock
+async def test_repo_rejects_invalid_returned_slug(slug):
+    respx.get(f"{API}/repos/o/r").mock(return_value=httpx.Response(200, json=dict(ITEM, full_name=slug)))
+    with pytest.raises(ProviderError, match="unexpected response"):
+        await ForgejoProvider("codeberg", API).repo("o/r")
+
+
+@respx.mock
+async def test_repo_cleans_trailing_newline_in_slug():
+    respx.get(f"{API}/repos/o/r").mock(return_value=httpx.Response(200, json=dict(ITEM, full_name="o/r\n")))
+    assert (await ForgejoProvider("codeberg", API).repo("o/r")).slug == "o/r"
+
+
+@respx.mock
+async def test_fallback_url_uses_cleaned_slug():
+    item = dict(ITEM, full_name="o/r\n", html_url="javascript:x")
+    respx.get(f"{API}/repos/search").mock(return_value=search_resp(item))
+    r = (await ForgejoProvider("codeberg", API).search("x", SearchFilters()))[0]
+    assert r.url == "https://codeberg.org/o/r"
+
+
+@pytest.mark.parametrize("stars,expected", [
+    (10**30, MAX_STARS), (-5, 0), (7.0, 7), (0, 0), (MAX_STARS, MAX_STARS),
+])
+@respx.mock
+async def test_stars_clamped_or_accepted(stars, expected):
+    respx.get(f"{API}/repos/search").mock(return_value=search_resp(dict(ITEM, stars_count=stars)))
+    assert (await ForgejoProvider("codeberg", API).search("x", SearchFilters()))[0].stars == expected
+
+
+@pytest.mark.parametrize("stars", [True, False, "5", None, 1.5, [1], {"a": 1}])
+@respx.mock
+async def test_invalid_stars_is_provider_error(stars):
+    respx.get(f"{API}/repos/search").mock(return_value=search_resp(dict(ITEM, stars_count=stars)))
+    with pytest.raises(ProviderError):
+        await ForgejoProvider("codeberg", API).search("x", SearchFilters())
+
+
+@pytest.mark.parametrize("forks,expected", [
+    (10**30, MAX_STARS), (-1, 0), (4.0, 4), (True, 0), ("3", 0), (None, 0), (1.5, 0), ([], 0)])
+@respx.mock
+async def test_forks_clamped_or_zero(forks, expected):
+    respx.get(f"{API}/repos/search").mock(return_value=search_resp(dict(ITEM, forks_count=forks)))
+    assert (await ForgejoProvider("codeberg", API).search("x", SearchFilters()))[0].forks == expected
+
+
+@respx.mock
+async def test_forks_infinity_is_zero():
+    respx.get(f"{API}/repos/search").mock(return_value=_raw(
+        b'{"ok": true, "data": [{"full_name": "o/r", "stars_count": 1, "forks_count": Infinity}]}'))
+    assert (await ForgejoProvider("codeberg", API).search("x", SearchFilters()))[0].forks == 0
+
+
+@respx.mock
+async def test_release_field_types():
+    respx.get(f"{API}/repos/o/r/releases/latest").mock(return_value=httpx.Response(200, json={
+        "tag_name": "v1", "published_at": 12345, "assets": [
+            {"name": "a", "size": -3, "browser_download_url": "https://x.example/a"},
+            {"name": "b", "size": "9", "browser_download_url": "https://x.example/b"},
+            {"name": "c", "size": True, "browser_download_url": "https://x.example/c"},
+            {"name": "d", "size": 12, "browser_download_url": "https://x.example/d"}]}))
+    r = await ForgejoProvider("codeberg", API).latest_release("o/r")
+    assert r.published_at is None and [a.size for a in r.assets] == [0, 0, 0, 12]
+    respx.get(f"{API}/repos/o/r/releases/latest").mock(return_value=httpx.Response(200, json={
+        "tag_name": "v1", "published_at": "2026-09-01\x00T10:00:00Z"}))
+    assert "\x00" not in (await ForgejoProvider("codeberg", API).latest_release("o/r")).published_at
+
+
+@respx.mock
+async def test_casefold_filters():
+    a = dict(ITEM, full_name="o/a", language="Straße", topics=["Straße"])
+    respx.get(f"{API}/repos/search").mock(return_value=search_resp(a))
+    p = ForgejoProvider("codeberg", API)
+    assert len(await p.search("x", SearchFilters(language="STRASSE"))) == 1
+    assert len(await p.search("x", SearchFilters(topic="STRASSE"))) == 1
+    assert len(await p.search("x", SearchFilters(language="   "))) == 1
+    assert len(await p.search("x", SearchFilters(language="Rust"))) == 0
+
+
+@pytest.mark.parametrize("url", [
+    "http://h.org/api/v1", "https://u:pw@h.org/api/v1", "https://u@h.org/api/v1", "https://h.org/api/v1?x=1",
+    "https://h.org/api/v1#f", "ftp://h.org/api", "https://", "", "h.org/api/v1"])
+def test_constructor_refuses_bad_base_url(url):
+    with pytest.raises(ValueError) as ei:
+        ForgejoProvider("x", url, token="tok")
+    assert "pw" not in str(ei.value) and "tok" not in str(ei.value)
+
+
+def test_constructor_accepts_normal_base_url():
+    ForgejoProvider("x", "https://git.example.org/api/v1")
+    ForgejoProvider("x", "https://git.example.org:3000/api/v1/")

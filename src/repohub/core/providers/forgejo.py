@@ -1,17 +1,35 @@
 from __future__ import annotations
 
+import math
 import time
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 import httpx
 
-from repohub.core.models import Asset, Release, Repo, SearchFilters, parse_arch
+from repohub.core.models import MAX_STARS, Asset, Release, Repo, SearchFilters, parse_arch
 from repohub.core.textsafe import clean_text
 from repohub.core.providers.base import NotFound, ProviderError, RateLimited, guard_parse, safe_url, valid_slug
 
 README_NAMES = ("README.md", "README.markdown", "README.rst", "README.txt", "README")
 MAX_LIMIT = 50
+MAX_SLUG = 200
+
+
+def _count(value, default: int | None = None) -> int:
+    """A real, finite integer clamped to 0..MAX_STARS. bool, strings, None, non-integral or non-finite floats are
+    invalid: ValueError (a malformed response) unless a default is given. Note a hostile configured host can still
+    display any stars it likes within the range: the trust model is that the hosts loader decides which hosts to trust."""
+    try:
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError("count")
+        if isinstance(value, float) and not (math.isfinite(value) and value.is_integer()):
+            raise ValueError("count")
+        return max(0, min(int(value), MAX_STARS))
+    except (ValueError, OverflowError):
+        if default is None:
+            raise ValueError("count") from None
+        return default
 
 
 def _utc(value) -> str:
@@ -22,15 +40,29 @@ def _utc(value) -> str:
         dt = datetime.fromisoformat(value)
     except ValueError:
         return ""
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    except (OverflowError, ValueError):
+        return ""
 
 
 class ForgejoProvider:
     def __init__(self, host_id: str, base_url: str, token: str | None = None):
         self.host = host_id
-        self._domain = urlparse(base_url).hostname or ""
+        try:
+            u = urlparse(base_url)
+            hostname, _ = u.hostname, u.port
+        except ValueError:
+            raise ValueError("invalid base URL") from None
+        if u.scheme != "https" or not hostname:
+            raise ValueError("base URL must be an https URL with a host")
+        if u.username is not None or u.password is not None or "@" in u.netloc:
+            raise ValueError("base URL must not contain credentials")
+        if u.query or u.fragment or "?" in base_url or "#" in base_url:
+            raise ValueError("base URL must not contain a query or fragment")
+        self._domain = hostname
         headers = {"User-Agent": "repohub"}
         if token:
             headers["Authorization"] = f"token {token}"
@@ -46,16 +78,27 @@ class ForgejoProvider:
         return slug
 
     def _to_repo(self, item: dict) -> Repo:
-        slug = item["full_name"]
-        if not isinstance(slug, str):
+        raw = item["full_name"]
+        if not isinstance(raw, str):
             raise TypeError("full_name")
+        slug = clean_text(raw)
+        if len(slug) > MAX_SLUG or not valid_slug(slug, "github"):
+            raise ValueError("full_name")
         return Repo(
-            host=self.host, slug=clean_text(slug), url=safe_url(item.get("html_url")) or f"https://{self._domain}/{slug}",
-            description=clean_text(item.get("description")), stars=int(item["stars_count"]), language=clean_text(item.get("language")),
+            host=self.host, slug=slug, url=safe_url(item.get("html_url")) or f"https://{self._domain}/{slug}",
+            description=clean_text(item.get("description")), stars=_count(item["stars_count"]), language=clean_text(item.get("language")),
             license="", topics=tuple(clean_text(t) for t in (item.get("topics") or ())), pushed_at=_utc(item.get("updated_at")),
-            archived=bool(item.get("archived")), forks=int(item.get("forks_count") or 0), homepage=safe_url(item.get("website")),
+            archived=bool(item.get("archived")), forks=_count(item.get("forks_count"), 0), homepage=safe_url(item.get("website")),
             fork=bool(item.get("fork")),
         )
+
+    @staticmethod
+    def _slug_ok(item) -> bool:
+        raw = item["full_name"]  # missing key / non-object item stay malformed-response errors
+        if not isinstance(raw, str):
+            raise TypeError("full_name")
+        slug = clean_text(raw)
+        return len(slug) <= MAX_SLUG and valid_slug(slug, "github")
 
     async def _send(self, path: str, params: dict | None) -> httpx.Response:
         try:
@@ -108,13 +151,13 @@ class ForgejoProvider:
         data = resp.json()["data"]
         if not isinstance(data, list):
             raise TypeError("data")
-        repos = [self._to_repo(i) for i in data]
+        repos = [self._to_repo(i) for i in data if self._slug_ok(i)]  # invalid names are dropped, not fatal
         if client_topic:
-            want = client_topic.strip().lower()
-            repos = [r for r in repos if want in (t.lower() for t in r.topics)]
-        if filters.language:
-            lang = filters.language.strip().lower()
-            repos = [r for r in repos if r.language.lower() == lang]
+            want = client_topic.strip().casefold()
+            repos = [r for r in repos if want in (t.casefold() for t in r.topics)]
+        lang = (filters.language or "").strip().casefold()
+        if lang:
+            repos = [r for r in repos if r.language.casefold() == lang]
         return repos
 
     @guard_parse
@@ -145,5 +188,8 @@ class ForgejoProvider:
         for a in j.get("assets") or ():
             url = safe_url(a.get("browser_download_url"))
             if url:
-                assets.append(Asset(clean_text(a["name"]), a.get("size") or 0, url, parse_arch(a["name"])))
-        return Release(clean_text(j["tag_name"]), j.get("published_at"), tuple(assets))
+                size = a.get("size")
+                size = size if isinstance(size, int) and not isinstance(size, bool) and size >= 0 else 0
+                assets.append(Asset(clean_text(a["name"]), size, url, parse_arch(a["name"])))
+        published = j.get("published_at")
+        return Release(clean_text(j["tag_name"]), clean_text(published) if isinstance(published, str) else None, tuple(assets))

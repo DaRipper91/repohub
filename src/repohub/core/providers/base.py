@@ -52,6 +52,6 @@ def guard_parse(fn):
     async def wrapper(self, *args, **kwargs):
         try:
             return await fn(self, *args, **kwargs)
-        except (KeyError, TypeError, ValueError, AttributeError, IndexError):
+        except (KeyError, TypeError, ValueError, AttributeError, IndexError, OverflowError, RecursionError):
             raise ProviderError(self.host, "unexpected response") from None
     return wrapper
