@@ -22,6 +22,7 @@ Prefer the MCP tools (server `repohub`, read-only). If they are not connected, t
 | Can it run here? | `repohub_check` | `repohub check HOST:OWNER/NAME --json` |
 | Build commands RepoHub would propose | `repohub_plan` | `repohub plan HOST:OWNER/NAME --json` |
 | Configured hosts | `repohub_hosts` | `repohub hosts --json` |
+| Download only some files (no clone) | (none) | `repohub grab HOST:OWNER/NAME` prints the `ghgrab` command for the user to run |
 
 Repositories are written `HOST:OWNER/NAME`, for example `github:Textualize/rich` or `codeberg:owner/tool`. Host ids come from `repohub_hosts`.
 

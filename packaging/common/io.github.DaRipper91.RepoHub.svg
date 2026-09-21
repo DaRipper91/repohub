@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="RepoHub">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#242833"/><stop offset="1" stop-color="#12141a"/></linearGradient>
+    <linearGradient id="planet" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b3beff"/><stop offset="1" stop-color="#5566e0"/></linearGradient>
+  </defs>
+  <rect width="256" height="256" rx="56" fill="url(#bg)"/>
+  <g fill="#e7e9ef"><circle cx="52" cy="60" r="3"/><circle cx="204" cy="48" r="2.5"/><circle cx="216" cy="196" r="3"/><circle cx="44" cy="190" r="2"/><circle cx="176" cy="216" r="2"/></g>
+  <ellipse cx="128" cy="132" rx="98" ry="30" fill="none" stroke="#96a4ff" stroke-opacity=".55" stroke-width="7" transform="rotate(-18 128 132)"/>
+  <circle cx="128" cy="128" r="60" fill="url(#planet)"/>
+  <path d="M84 138a60 60 0 0 0 88 24 60 60 0 0 1-88-24z" fill="#12141a" fill-opacity=".18"/>
+  <ellipse cx="128" cy="132" rx="98" ry="30" fill="none" stroke="#96a4ff" stroke-width="7" stroke-dasharray="130 400" stroke-dashoffset="-150" transform="rotate(-18 128 132)"/>
+</svg>

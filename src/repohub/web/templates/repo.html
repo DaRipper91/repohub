@@ -30,6 +30,10 @@
       <p class="dim">Advisory only. RepoHub looks for tools on this machine and never runs anything from the repository.</p>
       {% if claude_cmd %}<h3>Open in Claude Code</h3>
       <p class="dim">Run this in a terminal (RepoHub cannot open one for you):</p><pre>{{ claude_cmd }}</pre>{% endif %}
+      {% if grab_cmd %}<h3>Grab files with ghgrab</h3>
+      <p class="dim">Download single files or folders without cloning. Run this in a terminal:</p><pre>{{ grab_cmd }}</pre>
+      {% if grab_rel_cmd and d.release %}<p class="dim">Or fetch the release build for this machine:</p><pre>{{ grab_rel_cmd }}</pre>{% endif %}
+      {% if not grab_installed %}<p class="dim">ghgrab is not installed here. Install it with <code>{{ grab_install }}</code>.</p>{% endif %}{% endif %}
       <h3>Latest release</h3>
       {% if d.release %}
         <p>{{ d.release.tag }} {% if d.release.has_arm64 %}<span class="badge ok">arm64</span>{% endif %}</p>

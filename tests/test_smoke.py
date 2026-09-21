@@ -2,7 +2,7 @@ import repohub
 
 
 def test_version():
-    assert repohub.__version__ == "0.12.0"
+    assert repohub.__version__ == "0.13.0"
 
 
 import pytest

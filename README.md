@@ -54,6 +54,25 @@
 
 ## 🚀 Quick start
 
+### Install on Linux
+
+RepoHub builds into ready-to-install packages (details, limits and the build scripts are in [`packaging/`](packaging/README.md)):
+
+| You use | Get it | Install |
+|---|---|---|
+| Fedora / RHEL family | `packaging/rpm/build-in-container.sh` | `sudo dnf install ./repohub-*.rpm` |
+| Debian / Ubuntu | `packaging/deb/build-in-container.sh <image> <tag>` | `sudo apt install ./repohub_*.deb` |
+| Arch / Manjaro | `packaging/arch/build.sh` | `sudo pacman -U repohub-*.pkg.tar.*` |
+| Anything else | `packaging/appimage/build-in-container.sh` | `chmod +x RepoHub-*.AppImage && ./RepoHub-*.AppImage` |
+| Sandboxed | `packaging/flatpak/build.sh` | `flatpak install --user RepoHub-*.flatpak` |
+| No root, from a checkout | | `packaging/install/install.sh` (add `--service` to keep the web app running) |
+
+Every package puts `repohub`, `repohub-web`, `repohub-tui` and `repohub-mcp` on your PATH and adds a **RepoHub** and a **RepoHub (terminal)** entry to your application menu. The install script's `--uninstall` keeps your favorites and settings unless you add `--purge`. Packages are built per distribution release and per CPU architecture; there is no package repository yet.
+
+`repohub-web --open` starts the web app and opens it in your browser.
+
+### From source (development)
+
 Requires **Python 3.11 or newer** (developed on 3.12).
 
 ```bash
@@ -108,6 +127,7 @@ Open a repository to read its README and release info. Press `f` to favorite it 
 | `Enter` | Open the selected shelf or repository |
 | `f` | Favorite or unfavorite (repository screen) |
 | `c` then `y` / `n` | Clone: shows the destination, then confirm or cancel |
+| `g` then `y` / `n` | Browse the repository in [ghgrab](https://github.com/abhixdd/ghgrab) to download single files or folders without cloning (needs ghgrab installed) |
 | `[` / `]` | Previous or next page of a curated shelf |
 | `Ctrl+F` | Show your favorites |
 | `F2` | Show your accounts: who you are signed in as on each host, plus recent star and fork actions |
@@ -294,6 +314,7 @@ repohub plan HOST:OWNER/NAME [--json]
 repohub mcp
 repohub claude-setup [--json]
 repohub check HOST:OWNER/NAME [--json]
+repohub grab HOST:OWNER/NAME [--json]
 repohub recommend [--limit N] [--json]
 repohub similar HOST:OWNER/NAME [--limit N] [--json]
 repohub shelves [--json]
@@ -329,6 +350,8 @@ repohub repo github:BurntSushi/ripgrep --json | jq -r '.release.assets[] | selec
 `repohub recommend` and `repohub similar` are read-only. Suggestions are worked out on your machine from your favorites, your starred repositories (read from each signed-in host, kept in memory for an hour, never saved) and, only if you turn it on, a local history of repositories you opened (off by default, at most 500 repositories for 90 days, cleared with one button). Only plain topic and language searches leave your machine. Every suggestion says why it appears; anything you already saved or starred, forks and archived repositories are left out, and no topic fills more than three slots. On the web the same lists appear on the home page and as "Similar repositories" on a repository page; the history switch and Clear button are on the Accounts page.
 
 `repohub cloned` lists repositories already in your clone folder (`REPOHUB_CLONE_DIR`, default `~/playground`) and in any extra folders you picked (see below). It needs no network and looks only at the folder's immediate subfolders, reading each one's `.git/config` for the origin URL (regular files only, never symlinks, size-capped). A repository shows up as **cloned** everywhere in the web app and with a `●` in the terminal app, whatever its folder is called.
+
+**Grab single files with ghgrab.** [ghgrab](https://github.com/abhixdd/ghgrab) (a separate terminal tool: `pipx install ghgrab`) browses a repository and downloads just the files or folders you pick, from GitHub, GitLab, Codeberg and Forgejo servers, without cloning. RepoHub hands the repository over and does no downloading itself: every repository page shows the exact `ghgrab <url>` command to copy (and, for GitHub releases, `ghgrab rel owner/name`, which picks the build for your OS and CPU); in the terminal app press `g`, confirm, and RepoHub pauses while ghgrab runs. `repohub grab HOST:OWNER/NAME` prints the same command and runs nothing. ghgrab uses its own sign-in and settings; RepoHub never passes it a token.
 
 **Light and dark themes.** The web app follows your system's light or dark setting. To choose yourself, use the **Theme** switch in the header (Auto, Light or Dark); the choice is remembered in your browser only and applied before the page paints, so there is no flash. In the terminal app press `F7` to switch between light and dark (it works while typing and over a confirmation box, and the choice is remembered on your machine). Every color comes from one set of design tokens, and a test checks that all text and background pairs reach at least 4.5:1 contrast (and control borders 3:1) in both themes. The pages are usable by keyboard alone: a *Skip to content* link, visible focus outlines, labelled landmarks, and reduced-motion support.
 

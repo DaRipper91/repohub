@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=RepoHub
+GenericName=Repository browser
+Comment=Browse GitHub, GitLab and Codeberg like an app store (web app)
+Exec=repohub-web --open
+Icon=io.github.DaRipper91.RepoHub
+Terminal=true
+Categories=Development;
+Keywords=git;github;gitlab;codeberg;repositories;search;
+StartupNotify=false

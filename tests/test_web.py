@@ -677,3 +677,59 @@ def test_removing_an_unconfigured_favorite_still_needs_the_token(tmp_path):
     assert client.post("/favorite", data={"host": "oldforge", "slug": "o/gone"}).status_code == 403
     assert client.post("/favorite", data={"host": "oldforge", "slug": "o/gone", "token": "bad"}).status_code == 403
     assert hub.favorites.is_favorite("oldforge:o/gone")
+
+
+# ---------------------------------------------------------------- repohub-web --open
+
+def test_open_flag_opens_the_browser_once_the_server_accepts_connections():
+    import socket
+    import threading
+
+    from repohub.web.app import open_when_ready
+
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    port = srv.getsockname()[1]
+    opened = []
+    t = open_when_ready(f"http://127.0.0.1:{port}/", "127.0.0.1", port, opener=opened.append)
+    t.join(5)
+    srv.close()
+    assert opened == [f"http://127.0.0.1:{port}/"]
+
+
+def test_open_flag_gives_up_quietly_when_nothing_listens_or_no_browser():
+    import socket
+
+    from repohub.web.app import open_when_ready
+
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()  # nothing listens here
+    opened = []
+    open_when_ready("http://x/", "127.0.0.1", port, opener=opened.append, tries=2).join(5)
+    assert opened == []
+    s2 = socket.socket()
+    s2.bind(("127.0.0.1", 0))
+    s2.listen(1)
+
+    def boom(url):
+        raise RuntimeError("no browser")
+
+    open_when_ready("http://x/", "127.0.0.1", s2.getsockname()[1], opener=boom).join(5)  # must not raise
+    s2.close()
+
+
+def test_main_passes_open_and_never_opens_without_the_flag(monkeypatch):
+    import repohub.web.app as mod
+
+    calls = {"open": [], "run": []}
+    monkeypatch.setattr(mod, "open_when_ready", lambda url, host, port, **k: calls["open"].append(url))
+    monkeypatch.setattr("uvicorn.run", lambda app, host, port: calls["run"].append((host, port)))
+    monkeypatch.setattr("repohub.config.build_hub", lambda: make_hub(FakeProvider("github", [])))
+    monkeypatch.setattr("repohub.config.make_settings", lambda: __import__("repohub.core.settings", fromlist=["Settings"]).Settings())
+    mod.main(["--port", "9911"])
+    assert calls["open"] == [] and calls["run"] == [("127.0.0.1", 9911)]
+    mod.main(["--port", "9911", "--open"])
+    assert calls["open"] == ["http://127.0.0.1:9911/"]

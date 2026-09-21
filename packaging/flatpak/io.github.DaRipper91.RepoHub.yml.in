@@ -1,0 +1,55 @@
+# Flatpak manifest template: build.sh fills in @VERSION@ and @GIT_SHA256@ and generates python-deps.json.
+app-id: io.github.DaRipper91.RepoHub
+runtime: org.freedesktop.Platform
+runtime-version: '25.08'
+sdk: org.freedesktop.Sdk
+command: repohub-web
+
+finish-args:
+  # Talks to GitHub, GitLab, Codeberg and any hosts you configure.
+  - --share=network
+  # Reads your home folder (read-only) to find existing clones and their .git/config; only the clone folder is writable.
+  - --filesystem=home:ro
+  - --filesystem=~/playground:create
+  # Sign-in: the gh CLI is not in the sandbox. Give RepoHub a token with:
+  #   flatpak override --user --env=GITHUB_TOKEN="$(gh auth token)" io.github.DaRipper91.RepoHub
+
+cleanup:
+  - /share/man
+  - /share/git-core/templates
+  - '*.pyc'
+
+modules:
+  # The runtime has no git, which RepoHub needs to clone. Built without the parts it does not need.
+  - name: git
+    buildsystem: simple
+    build-commands:
+      - make -j${FLATPAK_BUILDER_N_JOBS} prefix=/app NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_GETTEXT=1 NO_EXPAT=1 NO_RUST=1 NO_INSTALL_HARDLINKS=1 all
+      - make prefix=/app NO_TCLTK=1 NO_PERL=1 NO_PYTHON=1 NO_GETTEXT=1 NO_EXPAT=1 NO_RUST=1 NO_INSTALL_HARDLINKS=1 install
+    sources:
+      - type: archive
+        url: https://www.kernel.org/pub/software/scm/git/git-2.55.0.tar.xz
+        sha256: @GIT_SHA256@
+
+  - python-deps.json
+
+  - name: repohub
+    buildsystem: simple
+    build-commands:
+      - pip3 install --no-index --no-deps --no-compile --prefix=/app ./repohub-@VERSION@-py3-none-any.whl
+      - |
+        for spec in repohub:repohub.cli:run repohub-web:repohub.web.app:main repohub-tui:repohub.tui.app:main repohub-mcp:repohub.mcp:main; do
+          name=${spec%%:*}; rest=${spec#*:}; mod=${rest%%:*}; fn=${rest#*:}
+          printf '#!/bin/sh\nexport PYTHONPATH=/app/lib/python3.13/site-packages${PYTHONPATH:+:$PYTHONPATH}\nexec python3 -c "from %s import %s; %s()" "$@"\n' "$mod" "$fn" "$fn" > /app/bin/$name
+          chmod 755 /app/bin/$name
+        done
+      - install -Dm644 common/io.github.DaRipper91.RepoHub.desktop /app/share/applications/io.github.DaRipper91.RepoHub.desktop
+      - install -Dm644 common/io.github.DaRipper91.RepoHub.Tui.desktop /app/share/applications/io.github.DaRipper91.RepoHub.Tui.desktop
+      - install -Dm644 common/io.github.DaRipper91.RepoHub.svg /app/share/icons/hicolor/scalable/apps/io.github.DaRipper91.RepoHub.svg
+      - install -Dm644 common/io.github.DaRipper91.RepoHub.metainfo.xml /app/share/metainfo/io.github.DaRipper91.RepoHub.metainfo.xml
+    sources:
+      - type: file
+        path: repohub-@VERSION@-py3-none-any.whl
+      - type: dir
+        path: ../common
+        dest: common

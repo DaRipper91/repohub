@@ -1,0 +1,28 @@
+#!/bin/sh
+# AppImage entry point. The mode comes from how the AppImage is invoked:
+#   RepoHub.AppImage                  -> the web app, opened in your browser
+#   RepoHub.AppImage web|tui|cli|mcp [args]
+#   a symlink named repohub-tui / repohub-mcp / repohub / repohub-web to the AppImage picks that mode
+HERE=$(dirname "$(readlink -f "$0")")
+export PATH="$HERE/opt/python/bin:$PATH"
+export PYTHONNOUSERSITE=1
+export PYTHONDONTWRITEBYTECODE=1
+PY="$HERE/opt/python/bin/python3"
+
+mode=web
+case "$(basename "${ARGV0:-$0}")" in
+    repohub-tui*) mode=tui ;;
+    repohub-mcp*) mode=mcp ;;
+    repohub-web*) mode=web ;;
+    repohub|repohub-cli*) mode=cli ;;
+esac
+case "${1:-}" in
+    web|tui|cli|mcp) mode=$1; shift ;;
+esac
+
+case "$mode" in
+    web) [ $# -eq 0 ] && set -- --open; exec "$PY" -c 'from repohub.web.app import main; main()' "$@" ;;
+    tui) exec "$PY" -c 'from repohub.tui.app import main; main()' "$@" ;;
+    mcp) exec "$PY" -c 'from repohub.mcp import main; main()' "$@" ;;
+    cli) exec "$PY" -c 'from repohub.cli import run; run()' "$@" ;;
+esac

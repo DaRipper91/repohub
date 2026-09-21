@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.DaRipper91.RepoHub</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <name>RepoHub</name>
+  <summary>Browse GitHub, GitLab and Codeberg like an app store</summary>
+  <description>
+    <p>RepoHub is a local app for finding and trying repositories. It searches GitHub, GitLab, Codeberg and any Forgejo server at once, shows shelves of popular projects, keeps favorites with tags and notes, and clones safely.</p>
+    <p>It runs on your machine as a web app, a terminal app and a read-only command line, and can connect to Claude Code through a read-only MCP server. Light and dark themes are included.</p>
+    <ul>
+      <li>Search every host at once, with filters and sorting</li>
+      <li>Favorites with tags, notes, collections and a new-releases view</li>
+      <li>Recommendations worked out on your machine</li>
+      <li>Shows which repositories you already cloned and whether one can run on this machine</li>
+      <li>Optional guided install: you approve every command</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">io.github.DaRipper91.RepoHub.desktop</launchable>
+  <url type="homepage">https://github.com/DaRipper91/repohub</url>
+  <url type="bugtracker">https://github.com/DaRipper91/repohub/issues</url>
+  <developer id="io.github.daripper91"><name>DaRipper91</name></developer>
+  <provides><binary>repohub</binary><binary>repohub-web</binary><binary>repohub-tui</binary><binary>repohub-mcp</binary></provides>
+  <categories><category>Development</category><category>Utility</category></categories>
+  <content_rating type="oars-1.1"/>
+  <supports><control>keyboard</control><control>pointing</control></supports>
+  <releases><release version="@VERSION@" date="@DATE@"/></releases>
+</component>

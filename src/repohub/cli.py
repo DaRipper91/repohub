@@ -137,6 +137,12 @@ def _build_parser() -> argparse.ArgumentParser:
     cs = sub.add_parser("claude-setup", help="print the commands that connect RepoHub to Claude Code (changes nothing)")
     cs.add_argument("--json", action="store_true")
 
+    gr = sub.add_parser("grab", help="print the ghgrab command to download single files from a repository (never runs it)",
+                        description="ghgrab (github.com/abhixdd/ghgrab) browses a repository and downloads single files "
+                                    "or folders without cloning. This prints the command for HOST:OWNER/NAME; RepoHub does not run it.")
+    gr.add_argument("repo", metavar="HOST:OWNER/NAME")
+    gr.add_argument("--json", action="store_true")
+
     ro = sub.add_parser("roots", help="show the folders RepoHub looks in for clones; --scan suggests more (read-only)",
                         description="Lists the clone folder and any extra folders picked in the web or terminal app. "
                                     "--scan looks for folders that contain git clones (home folder, or --system for the whole "
@@ -539,6 +545,28 @@ def _cmd_claude_setup(args, hub, o: _Out) -> int:
     return EXIT_OK
 
 
+def _cmd_grab(args, hub, o: _Out) -> int:
+    from repohub.core.external import GHGRAB_INSTALL, find_tool, grab_command, release_command
+
+    parsed = _valid_repo_arg(args.repo)
+    if parsed is None:
+        o.err("error: repository must look like HOST:OWNER/NAME with a configured host (see 'repohub hosts')")
+        return EXIT_USAGE
+    host, slug = parsed
+    cmd, rel = grab_command(host, slug), release_command(host, slug)
+    installed = find_tool("ghgrab") is not None
+    if args.json:
+        o.json({"schema_version": SCHEMA_VERSION, "repo": f"{host}:{slug}", "command": cmd, "release_command": rel,
+                "ghgrab_installed": installed, "install": GHGRAB_INSTALL})
+        return EXIT_OK
+    o.out(cmd)
+    if rel:
+        o.out(f"{rel}    # GitHub release build for this OS and CPU")
+    if not installed:
+        o.err(f"note: ghgrab is not installed. Install it with: {GHGRAB_INSTALL}")
+    return EXIT_OK
+
+
 def _cmd_roots(args, hub, o: _Out) -> int:
     from repohub.config import clone_root
     from repohub.core.roots import ScanRoots, discover, home_start
@@ -623,7 +651,7 @@ def _cmd_accounts(args, hub, o: _Out) -> int:
 _COMMANDS = {"search": _cmd_search, "repo": _cmd_repo, "shelves": _cmd_shelves,
              "shelf": _cmd_shelf, "favorites": _cmd_favorites, "accounts": _cmd_accounts,
              "recommend": _cmd_recommend, "similar": _cmd_similar, "releases": _cmd_releases,
-             "cloned": _cmd_cloned, "check": _cmd_check, "roots": _cmd_roots, "plan": _cmd_plan}
+             "cloned": _cmd_cloned, "check": _cmd_check, "roots": _cmd_roots, "plan": _cmd_plan, "grab": _cmd_grab}
 
 
 def main(argv: list[str] | None = None, *, hub_factory: Callable | None = None,
@@ -657,6 +685,8 @@ def main(argv: list[str] | None = None, *, hub_factory: Callable | None = None,
             return _cmd_check(args, None, o)
         if args.command == "cloned":
             return _cmd_cloned(args, None, o)  # no hub, no network
+        if args.command == "grab":
+            return _cmd_grab(args, None, o)  # no hub, no network, nothing run
         if args.command == "claude-setup":
             return _cmd_claude_setup(args, None, o)
         if args.command == "mcp":

@@ -10,6 +10,7 @@ from textual.screen import ModalScreen, Screen
 from textual.widgets import DataTable, Footer, Header, Input, Markdown, Static
 
 from repohub.core.awareness import Awareness
+from repohub.core.external import GHGRAB_INSTALL, find_tool, grab_command, repo_url
 from repohub.core.browse import load_all_shelves
 from repohub.core.runner import RunError, Runner
 from repohub.core.runplan import WARNING
@@ -133,7 +134,8 @@ class RunScreen(Screen):
 class DetailScreen(Screen):
     BINDINGS = [Binding("escape", "back", "Back"), Binding("f", "favorite", "Favorite"),
                 Binding("c", "clone", "Clone"), Binding("s", "star", "Star/unstar"), Binding("k", "fork", "Fork"),
-                Binding("i", "install", "Install/build"), Binding("o", "open_claude", "Open in Claude Code")]
+                Binding("i", "install", "Install/build"), Binding("o", "open_claude", "Open in Claude Code"),
+                Binding("g", "grab", "Grab files (ghgrab)")]
 
     def __init__(self, hub, host: str, slug: str, clone_root, cloner):
         super().__init__()
@@ -215,21 +217,13 @@ class DetailScreen(Screen):
     def action_open_claude(self) -> None:
         """Start Claude Code in the cloned folder, after a y/n. RepoHub is suspended while it runs."""
         import shlex
-        import shutil
 
         r = self.detail.repo if self.detail else None
         clone = self.app.awareness.clone_of(r) if r else None
         if clone is None:
             self.notify("Clone this repository first (c), or add its folder on the Folders view (F5)", markup=False)
             return
-        exe = shutil.which("claude")
-        if exe is not None:  # never a relative PATH hit or a program shipped inside the repository
-            import os
-
-            real = os.path.realpath(exe)
-            root = os.path.realpath(clone.path)
-            if not os.path.isabs(exe) or real == root or real.startswith(root + os.sep):
-                exe = None
+        exe = find_tool("claude", avoid=clone.path)  # never a relative PATH hit or a program shipped inside the repository
         if exe is None:
             self.notify(f"Claude Code was not found on PATH. In a terminal: cd {shlex.quote(clone.path)} && claude", markup=False)
             return
@@ -252,6 +246,40 @@ class DetailScreen(Screen):
         self.app.push_screen(ConfirmWrite(
             f"Open Claude Code in this folder?\n{clone.path}\nRepoHub pauses until you leave Claude Code.\n"
             "The folder may carry its own Claude settings (.claude/, .mcp.json): Claude Code asks before trusting them.",), done)
+
+    def action_grab(self) -> None:
+        """Start ghgrab on this repository, after a y/n. RepoHub pauses until ghgrab exits and downloads nothing itself."""
+        import shlex
+
+        url = repo_url(self.host, self.slug)
+        if url is None:
+            self.notify("This repository cannot be opened in ghgrab", severity="warning", markup=False)
+            return
+        exe = find_tool("ghgrab")
+        if exe is None:
+            self.notify(f"ghgrab is not installed. Install it with: {GHGRAB_INSTALL}", markup=False)
+            return
+
+        def done(ok: bool | None) -> None:
+            if not ok:
+                return
+            import os
+
+            try:
+                from textual.app import SuspendNotSupported
+            except ImportError:  # older Textual
+                SuspendNotSupported = RuntimeError  # noqa: N806
+            try:
+                with self.app.suspend():
+                    self.app.launcher([exe, url], cwd=os.path.expanduser("~"))
+            except SuspendNotSupported:
+                self.notify(f"This terminal cannot be suspended. Run: {grab_command(self.host, self.slug)}", markup=False)
+            except OSError as e:
+                self.notify(f"Could not start ghgrab: {e}", severity="error", markup=False)
+
+        self.app.push_screen(ConfirmWrite(
+            f"Browse {self.slug} in ghgrab?\n{url}\nRepoHub pauses until you quit ghgrab. ghgrab does its own downloading "
+            "(into the folder it is set up to use) and uses your own sign-in."), done)
 
     def action_install(self) -> None:
         runner = getattr(self.app, "runner", None)

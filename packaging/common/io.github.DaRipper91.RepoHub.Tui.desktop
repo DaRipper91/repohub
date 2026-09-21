@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=RepoHub (terminal)
+GenericName=Repository browser
+Comment=Browse GitHub, GitLab and Codeberg like an app store (terminal app)
+Exec=repohub-tui
+Icon=io.github.DaRipper91.RepoHub
+Terminal=true
+Categories=Development;ConsoleOnly;
+Keywords=git;github;gitlab;codeberg;repositories;search;tui;

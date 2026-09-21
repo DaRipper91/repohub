@@ -1,0 +1,19 @@
+[Unit]
+Description=RepoHub web app (local, http://127.0.0.1:8765)
+Documentation=https://github.com/DaRipper91/repohub
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/repohub-web --port 8765
+Restart=on-failure
+RestartSec=3
+# The app only listens on loopback and never needs elevated rights.
+NoNewPrivileges=yes
+PrivateTmp=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=default.target

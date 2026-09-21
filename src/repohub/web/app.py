@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import shlex
+import threading
 from contextlib import asynccontextmanager
 import secrets
 from pathlib import Path
@@ -18,6 +19,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from repohub.core.awareness import Awareness
+from repohub.core.external import GHGRAB_INSTALL, find_tool, grab_command, release_command
 from repohub.core.runplan import WARNING
 from repohub.core.runner import RunError, Runner
 from repohub.core.settings import Settings
@@ -194,7 +196,9 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         return page(request, "repo.html", d=d, readme_html=render_markdown(d.readme) if d.readme else "",
                     is_fav=hub.favorites.is_favorite(d.repo.key), signed_in=acct.status == "signed in", starred=starred,
                     verdict=await run_in_threadpool(aware.check, d.repo, d.release),
-                    claude_cmd=(f"cd {shlex.quote(c.path)} && claude" if (c := aware.clone_of(d.repo)) else ""))
+                    claude_cmd=(f"cd {shlex.quote(c.path)} && claude" if (c := aware.clone_of(d.repo)) else ""),
+                    grab_cmd=grab_command(host, d.repo.slug), grab_rel_cmd=release_command(host, d.repo.slug),
+                    grab_installed=find_tool("ghgrab") is not None, grab_install=GHGRAB_INSTALL)
 
     def _in_use() -> list[str]:
         return [str(r) for r in aware.roots()]
@@ -500,6 +504,34 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
     return app
 
 
+def open_when_ready(url: str, host: str, port: int, opener=None, tries: int = 60) -> threading.Thread:
+    """Open ``url`` in the default browser as soon as the server accepts connections (gives up after ~15 s)."""
+    import socket
+    import time
+    import webbrowser
+
+    opener = opener or webbrowser.open
+
+    def wait_and_open() -> None:
+        probe = "127.0.0.1" if host in ("0.0.0.0", "::", "localhost") else host
+        for _ in range(tries):
+            try:
+                with socket.create_connection((probe, port), timeout=0.5):
+                    break
+            except OSError:
+                time.sleep(0.25)
+        else:
+            return
+        try:
+            opener(url)
+        except Exception:
+            pass  # no browser available: the URL is still printed by the server
+
+    t = threading.Thread(target=wait_and_open, name="repohub-open", daemon=True)
+    t.start()
+    return t
+
+
 def main(argv: list[str] | None = None) -> None:
     import uvicorn
 
@@ -508,11 +540,14 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="repohub-web", description="RepoHub web app (binds to loopback by default)")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--open", action="store_true", help="open the web app in your browser once it is running")
     args = parser.parse_args(argv)
     if args.host not in ("127.0.0.1", "localhost"):
         print("WARNING: binding to a non-loopback address exposes clone and favorites to your network.")
     roots = ScanRoots()
     hub = build_hub()
     aware = Awareness(clone_root(), extra_roots=roots.list)
-    uvicorn.run(create_app(hub, clone_root(), roots=roots, awareness=aware,
-                           runner=Runner(aware, make_settings(), hub.actions)), host=args.host, port=args.port)
+    app = create_app(hub, clone_root(), roots=roots, awareness=aware, runner=Runner(aware, make_settings(), hub.actions))
+    if args.open:
+        open_when_ready(f"http://{'127.0.0.1' if args.host in ('0.0.0.0', '::') else args.host}:{args.port}/", args.host, args.port)
+    uvicorn.run(app, host=args.host, port=args.port)

@@ -144,3 +144,9 @@ Fixes after the whole-phase review:
 - **No shadowing.** On a duplicate `owner/name` a built-in host's entry always beats an extra host's; among equals the stars, then registry-rank rule applies.
 - **Favorites of unconfigured hosts** can be removed: a Remove button on the web favorites page (`POST /favorite` removes a stored favorite for an unregistered host without any network call and never adds one), and the `d` key in the terminal favorites view.
 - **Tests.** One safe `build_hub()` wiring test (temp config and data dirs, empty `PATH`, no network); wall-clock thresholds relaxed to 10 seconds; the live Codeberg slug check enforces `owner/name` and the live tests use `find_host_tokens`. `find_tokens` and `Tokens` remain because `tests/test_auth.py` still tests them.
+
+
+# After Phase 10 (v0.13.0)
+
+- **Packaging** (`packaging/`): RPM, DEB, Arch, AppImage, Flatpak and a no-root install script, all built from one staging script and tested in clean containers (aarch64). `repohub-web --open` opens the browser.
+- **ghgrab:** a "Grab files" action (terminal key `g`, web command block, `repohub grab`) that hands a repository to the separate ghgrab tool; RepoHub downloads nothing itself.

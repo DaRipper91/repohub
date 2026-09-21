@@ -1,0 +1,23 @@
+# Maintainer: DaRipper91 <theripper81791@gmail.com>
+# Bundled build: the app and its Python dependencies live in /opt/repohub/venv on top of the system Python.
+# Arch moves to a new Python about once a year, so this package pins the Python minor version it is built with
+# and needs a rebuild when Python moves on. Building needs network access (dependency wheels).
+pkgname=repohub
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc='Browse GitHub, GitLab and Codeberg like an app store (web app, terminal app, CLI, read-only MCP server)'
+arch=('x86_64' 'aarch64')
+url='https://github.com/DaRipper91/repohub'
+license=('MIT')
+_pyver=$(python -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+_pynext="${_pyver%.*}.$(( ${_pyver#*.} + 1 ))"
+depends=("python>=$_pyver" "python<$_pynext" 'git')
+optdepends=('github-cli: use your existing GitHub sign-in (gh auth login)')
+options=('!strip' '!debug')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+    cd "$srcdir/$pkgname-$pkgver"
+    PYTHON="python$_pyver" sh packaging/common/stage.sh "$pkgdir"
+}

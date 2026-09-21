@@ -1,0 +1,29 @@
+name: packages
+
+# Builds the Linux packages for x86-64 and arm64 and attaches them to the workflow run. Manual or on version tags.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  bundled:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: RPM (Fedora 44, Python 3.12)
+        run: sh packaging/rpm/build-in-container.sh 44 3.12
+      - name: DEB (Debian 13)
+        run: sh packaging/deb/build-in-container.sh docker.io/library/debian:trixie deb13
+      - name: DEB (Ubuntu 24.04)
+        run: sh packaging/deb/build-in-container.sh docker.io/library/ubuntu:24.04 ubuntu2404
+      - name: AppImage
+        run: sh packaging/appimage/build-in-container.sh 3.12
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.runner }}
+          path: packaging/dist/*
