@@ -56,7 +56,13 @@ class History:
         with self._lock:
             rows = self._db.execute("SELECT data FROM history WHERE at >= ? ORDER BY at DESC",
                                     (self._now() - MAX_AGE,)).fetchall()
-        return [Repo.from_dict(json.loads(r[0])) for r in rows]
+        out = []
+        for row in rows:
+            try:
+                out.append(Repo.from_dict(json.loads(row[0])))
+            except Exception:  # a damaged row is skipped, never fatal
+                continue
+        return out
 
     def clear(self) -> None:
         with self._lock:

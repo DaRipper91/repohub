@@ -24,8 +24,12 @@
 <form method="post" action="/history" class="inline">
   <input type="hidden" name="token" value="{{ token }}">
   <button name="action" value="{{ 'off' if history_on else 'on' }}">{{ "Turn history off" if history_on else "Turn history on" }}</button>
+</form>
+<form method="post" action="/history" class="inline" hx-boost="true" hx-confirm="Clear your local history? This cannot be undone.">
+  <input type="hidden" name="token" value="{{ token }}">
   <button name="action" value="clear">Clear history</button>
 </form>
+<p class="dim">Turning history off only hides what is kept; use Clear to delete it.</p>
 <h3>Recent actions</h3>
 {% if recent %}<table><tr><th>Host</th><th>Repository</th><th>Action</th><th>Result</th></tr>
 {% for e in recent %}<tr><td>{{ e.host }}</td><td>{{ e.slug }}</td><td>{{ e.action }}</td><td>{{ "ok" if e.ok else "failed" }}: {{ e.result }}</td></tr>{% endfor %}</table>

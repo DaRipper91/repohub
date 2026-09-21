@@ -110,6 +110,9 @@ Open a repository to read its README and release info. Press `f` to favorite it 
 | `[` / `]` | Previous or next page of a curated shelf |
 | `Ctrl+F` | Show your favorites |
 | `F2` | Show your accounts: who you are signed in as on each host, plus recent star and fork actions |
+| `F3` / `F4` | Turn your local history on or off / clear it (asks first) |
+
+The last row of the shelf list, **Recommended for you**, shows suggestions with the reason for each.
 
 On a repository's screen: `s` stars or unstars it and `k` forks it. Each asks `y`/`n` first, naming the host, repository and account, and makes one attempt (never retried). You must be signed in on that host (see the Accounts page).
 | `d` | Remove the selected favorite (favorites view; works for hosts that are no longer configured) |
@@ -281,6 +284,8 @@ repohub search TEXT... [--lang L] [--min-stars N] [--days N] [--host ID|all]
 repohub repo HOST:OWNER/NAME [--readme] [--json]
 repohub hosts [--json]
 repohub accounts [--json]
+repohub recommend [--limit N] [--json]
+repohub similar HOST:OWNER/NAME [--limit N] [--json]
 repohub shelves [--json]
 repohub shelf NAME_OR_INDEX [--limit N] [--no-refresh] [--json]
 repohub favorites [--json]
@@ -309,6 +314,8 @@ repohub repo github:BurntSushi/ripgrep --json | jq -r '.release.assets[] | selec
 | `repo` | `{"schema_version": 1, "repo": {...}, "release": {"tag", "published_at", "assets": [{"name", "size", "url", "arch"}]} or null, "readme": text or null}` (`readme` only with `--readme`; `arch` is `arm64`, `x86_64` or `unknown`) |
 
 `repohub accounts` asks each host who your token belongs to (`GET /user`) and shows the account, where the token came from (for example `env GITLAB_TOKEN` or `gh CLI`, never the value), the scopes and rate limit where the host reports them, and a "can I star and fork?" hint. It only reads, stores nothing, and the web app shows the same on `/accounts`. Forgejo hosts do not report scopes, so they show `unknown`.
+
+`repohub recommend` and `repohub similar` are read-only. Suggestions are worked out on your machine from your favorites, your starred repositories (read from each signed-in host, kept in memory for an hour, never saved) and, only if you turn it on, a local history of repositories you opened (off by default, at most 500 repositories for 90 days, cleared with one button). Only plain topic and language searches leave your machine. Every suggestion says why it appears; anything you already saved or starred, forks and archived repositories are left out, and no topic fills more than three slots. On the web the same lists appear on the home page and as "Similar repositories" on a repository page; the history switch and Clear button are on the Accounts page.
 
 `repohub hosts` never prints token values: only `token: true/false` and the names of the variables to set. Problems with `hosts.yaml` appear as `warning:` lines on stderr and in `"problems"`.
 
@@ -438,7 +445,7 @@ RepoHub grows in phases. Each phase gets a written design, a task-by-task plan, 
 | **2. Other hosts** | A host registry and a Forgejo/Gitea provider: Codeberg built in, plus any Forgejo or Gitea instance you add in a config file (v0.3.0) | ✅ Done (10 tasks) |
 | **3. Accounts and login** | Uses the sign-ins you already have (env variables, `gh` CLI) and stores nothing; an Accounts page shows who you are on each host, where the token came from, its scopes and rate limit | ✅ Done (v0.4.0, reviewed) |
 | **4. Star and fork** | Star, unstar and fork from the web and terminal apps, always confirmed, with a local action log. The CLI stays read-only | ✅ Done (v0.5.0, reviewed; Codeberg not yet tried with a real token) |
-| **5. Recommendations** | Suggestions from your favorites, your stars, an opt-in local history, and "similar to this repo", all computed on your machine | 📝 Planned |
+| **5. Recommendations** | Suggestions from your favorites, your stars, an opt-in local history, and "similar to this repo", all computed on your machine | ✅ Done (v0.6.0, reviewed) |
 | **6. Machine awareness** | "Already cloned" badges, a "Can I run this here?" panel (arm64 release assets, installed toolchains), and a shared project detector | ⏸️ Paused |
 | **7. Guided install and run** | Shows the exact install and run commands for a cloned repo; you approve each command before it runs, and output streams live | 📝 Planned |
 | **8. Favorites 2.0** | Tags, notes and collections for favorites, and a "new releases" tab | 📝 Planned |
@@ -507,7 +514,7 @@ Standing rules for every phase: the existing clone protections stay as they are;
 - **Phase 2, other hosts (done):** a host registry replacing the hard-coded GitHub and GitLab pair; a Forgejo/Gitea provider (search, README, releases); Codeberg built in; extra instances in `~/.config/repohub/hosts.yaml` with strict URL validation; search, shelves, favorites, the CLI and the clone allow-list all reading the registry.
 - **Phase 3, accounts and login (done):** token discovery per host; identity, scope and rate-limit lookups; an Accounts page in the web app, a key in the terminal app and a read-only `repohub accounts` command; nothing stored on disk.
 - **Phase 4, star and fork (done):** star, unstar and fork for GitHub, GitLab and Forgejo; a confirmation naming the host, repository and account; no automatic retries; a local action log.
-- **Phase 5, recommendations:** an interest profile from favorites, stars and an opt-in history; a "Recommended for you" shelf, "Similar repositories" on repo pages, and read-only `repohub recommend` and `repohub similar` commands; every suggestion explains why.
+- **Phase 5, recommendations (done):** an interest profile from favorites, stars and an opt-in history; a "Recommended for you" shelf, "Similar repositories" on repo pages, and read-only `repohub recommend` and `repohub similar` commands; every suggestion explains why.
 - **Phase 6, machine awareness:** a project detector (Cargo.toml, pyproject or requirements, package.json, Makefile, Dockerfile); a toolchain check; a "can I run this here?" panel; "already cloned" badges from a scan of your clone folder only.
 - **Phase 7, guided install and run:** proposing commands from the detector; an approval step for every command; a runner confined to the cloned folder that streams output; strict review because it runs the repository's own code.
 - **Phase 8, favorites 2.0:** storage for tags, notes and collections; editing and filtering in every interface; a "new releases" view.
@@ -529,7 +536,7 @@ Standing rules for every phase: the existing clone protections stay as they are;
 - GitLab cannot sort by forks or hide forks server-side, so those options only apply to the results that were fetched.
 - Remote images in READMEs can load in the web app (the CSP allows `img-src *`), which shows your IP address to those hosts.
 - The cache is never purged; expired entries are only overwritten.
-- Not included yet: recommendations. Bitbucket is not planned. See the [roadmap](#-roadmap) for what is planned.
+- Bitbucket is not planned. See the [roadmap](#-roadmap) for what is planned.
 
 ## 📜 License
 

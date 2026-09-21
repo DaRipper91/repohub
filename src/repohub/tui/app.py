@@ -261,6 +261,8 @@ class RepoHubApp(App):
         self._status(status)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action in ("clear_history", "history") and len(self.screen_stack) > 1:
+            return False
         if action == "accounts" and len(self.screen_stack) > 1:  # not from the detail or confirm screens
             return False
         if action in ("next_page", "prev_page"):
@@ -327,8 +329,12 @@ class RepoHubApp(App):
         self.notify("Local history is on" if on else "Local history is off", markup=False)
 
     def action_clear_history(self) -> None:
-        self.hub.history.clear()
-        self.notify("History cleared", markup=False)
+        def done(confirmed: bool | None) -> None:
+            if confirmed:
+                self.hub.history.clear()
+                self.notify("History cleared", markup=False)
+
+        self.push_screen(ConfirmWrite("Clear your local history? This cannot be undone."), done)
 
     def action_accounts(self) -> None:
         self._status("Checking accounts…")

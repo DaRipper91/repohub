@@ -449,3 +449,90 @@ async def test_tui_recommended_row_and_history_keys(tmp_path):
         assert h.history.enabled
         await pilot.press("f3")
         assert not h.history.enabled
+
+
+# ---------------------------------------------------------------- review follow-ups
+
+async def test_one_failing_search_does_not_lose_the_others():
+    class Flaky(RecProvider):
+        async def search(self, query, filters, per_page=30):
+            if filters.topic == "boom":
+                raise RuntimeError("x")
+            return await super().search(query, filters, per_page)
+
+    p = Flaky(pool=[r("x/1", ["tui"])], signed_in=False)
+    h = hub_of(p)
+    h.favorites.add(r("a/fav", ["boom", "tui"]))
+    res = await h.recommend()
+    assert [i.repo.slug for i in res.items] == ["x/1"]
+
+
+async def test_caller_cancellation_still_propagates():
+    import asyncio
+
+    class Slow(RecProvider):
+        async def search(self, query, filters, per_page=30):
+            await asyncio.sleep(30)
+
+    h = hub_of(Slow(signed_in=False))
+    h.favorites.add(r("a/fav", ["tui"]))
+    task = asyncio.ensure_future(h.recommend())
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+def test_corrupt_history_row_is_skipped(tmp_path):
+    db = str(tmp_path / "h.db")
+    h = History(db)
+    h.set_enabled(True)
+    h.record(r("o/good"))
+    h._db.execute("INSERT INTO history (key, data, at) VALUES ('bad', 'not json', ?)", (h._now(),))
+    h._db.commit()
+    assert [x.slug for x in h.list()] == ["o/good"]
+
+
+@respx.mock
+async def test_tokenless_starred_repos_make_no_request():
+    gl = respx.get("https://gitlab.com/api/v4/user").mock(return_value=httpx.Response(200, json={"id": 1}))
+    cb = respx.get("https://codeberg.org/api/v1/user/starred").mock(return_value=httpx.Response(200, json=[]))
+    assert await GitLabProvider().starred_repos() == []
+    assert await ForgejoProvider("codeberg", "https://codeberg.org/api/v1").starred_repos() == []
+    assert gl.call_count == 0 and cb.call_count == 0
+
+
+async def test_paused_host_is_not_asked_for_starred_even_with_a_cache_miss():
+    p = RecProvider(pool=[r("x/1", ["tui"])], starred=[r("a/s", ["tui"])])
+    h = hub_of(p)
+    h._note_rate_limit("github", RateLimited("github", "slow", None))
+    h.favorites.add(r("a/fav", ["tui"]))
+    res = await h.recommend()
+    assert p.starred_calls == 0 and p.searches == [] and "github" in res.errors
+
+
+def test_accounts_page_history_clear_is_confirmed_and_explained(tmp_path):
+    c, _ = web(RecProvider(signed_in=False), tmp_path)
+    t = c.get("/accounts").text
+    assert "hx-confirm" in t and "only hides what is kept" in t
+
+
+async def test_tui_clear_history_needs_confirmation(tmp_path):
+    from repohub.tui.app import ConfirmWrite, RepoHubApp
+
+    h = hub_of(RecProvider(signed_in=False))
+    h.history.set_enabled(True)
+    h.history.record(r("o/a"))
+    app = RepoHubApp(h, tmp_path, shelves=[Shelf("s", topic="x")])
+    async with app.run_test() as pilot:
+        await pilot.press("f4")
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmWrite) and len(h.history.list()) == 1
+        await pilot.press("n")
+        await pilot.pause()
+        assert len(h.history.list()) == 1
+        await pilot.press("f4")
+        await pilot.pause()
+        await pilot.press("y")
+        await pilot.pause()
+        assert h.history.list() == []

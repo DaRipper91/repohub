@@ -450,7 +450,11 @@ class Hub:
         repos: list[Repo] = []
         errors: dict[str, str] = {}
         for out in results:
-            if isinstance(out, Exception):
+            if isinstance(out, asyncio.CancelledError) and asyncio.current_task() is not None \
+                    and asyncio.current_task().cancelling():
+                raise out  # our own cancellation propagates
+            if isinstance(out, BaseException):  # one failed search must not lose the others
+                errors["search"] = "unexpected error"
                 continue
             repos += out.repos
             errors.update(out.errors)
