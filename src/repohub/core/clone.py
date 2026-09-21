@@ -34,27 +34,37 @@ def _validate(url: str) -> tuple[str, str, str]:
         raise CloneError("URL must be a string")
     if any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url):
         raise CloneError("URL contains whitespace or control characters")
-    u = urlparse(url)
     reg = registry()
     domains = set(reg.clone_domains().values())  # exact (lowercase) match, never a suffix or substring
-    if u.scheme != "https" or u.hostname not in domains or u.username or u.password or u.port:
+    try:  # urlparse and the .hostname/.port properties raise ValueError on malformed input
+        u = urlparse(url)
+        hostname = u.hostname
+        bad = u.scheme != "https" or hostname not in domains or u.username or u.password or u.port
+    except ValueError:
+        raise CloneError("only plain https URLs on a configured host are allowed") from None
+    if bad:
         raise CloneError("only plain https URLs on a configured host are allowed")
     if u.query or u.fragment or u.params or ":" in u.netloc:
         raise CloneError("only plain https URLs on a configured host are allowed")
     path = u.path.strip("/")
     if path.endswith(".git"):
         path = path[:-4]
-    host = reg.id_for_domain(u.hostname)
+    host = reg.id_for_domain(hostname)
     if host is None or not reg.slug_ok(host, path):
         raise CloneError("invalid repository path")
     name = path.split("/")[-1]
     if not _NAME.fullmatch(name):
         raise CloneError("invalid folder name")
-    return u.hostname, path, name
+    return hostname, path, name
 
 
 def plan_clone(url: str, dest_root: Path | str) -> Path:
     _, _, name = _validate(url)
+    return _target_for(name, dest_root)
+
+
+def _target_for(name: str, dest_root: Path | str) -> Path:
+    """Destination folder for an already-validated folder name."""
     root = Path(dest_root).expanduser().resolve()
     target = (root / name).resolve()
     if target.parent != root:
@@ -71,8 +81,8 @@ def _last_line(stderr: str | None) -> str:
 
 
 def clone(url: str, dest_root: Path | str, shallow: bool = True, runner=subprocess.run) -> Path:
-    hostname, path, _ = _validate(url)
-    target = plan_clone(url, dest_root)
+    hostname, path, _name = _validate(url)
+    target = _target_for(_name, dest_root)  # one validation only: everything derives from it
     canonical = f"https://{hostname}/{path}.git"
     with _LOCK:
         if target in _IN_FLIGHT:

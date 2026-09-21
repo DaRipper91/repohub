@@ -280,3 +280,38 @@ def test_codeberg_lookalikes_and_old_rejections_still_fail(url, tmp_path):
 def test_error_message_names_configured_host_rule(tmp_path):
     with pytest.raises(CloneError, match="only plain https URLs on a configured host are allowed"):
         plan_clone("https://evil.com/a/b", tmp_path)
+
+
+@pytest.mark.parametrize("url", [
+    "https://[codeberg.org]/o/r", "https://[::1/o/r", "https://[::1]:99999/o/r", "https://codeberg.org:99999/o/r",
+    "https://codeberg.org:99999999999/o/r", "https://[v1.x]/o/r", "https://[/o/r", "https://]/o/r",
+])
+def test_unparseable_urls_raise_clone_error_never_value_error(url, tmp_path):
+    with pytest.raises(CloneError):
+        plan_clone(url, tmp_path)
+    with pytest.raises(CloneError):
+        clone(url, tmp_path, runner=lambda *a, **k: pytest.fail("must not run git"))
+
+
+def test_clone_validates_once_even_if_registry_changes_midway(tmp_path, monkeypatch):
+    import repohub.core.clone as clone_mod
+    from repohub.core.hosts import BUILTIN_HOSTS, HostRegistry
+
+    first = HostRegistry(BUILTIN_HOSTS)
+    later = HostRegistry(BUILTIN_HOSTS[:1])  # no codeberg
+    calls = []
+
+    def accessor():
+        calls.append(1)
+        return first if len(calls) == 1 else later
+
+    monkeypatch.setattr(clone_mod, "registry", accessor)
+    runs = []
+
+    def runner(args, **kw):
+        runs.append(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    target = clone("https://codeberg.org/o/r", tmp_path, runner=runner)
+    assert len(runs) == 1 and runs[0][-2] == "https://codeberg.org/o/r.git"
+    assert target == tmp_path.resolve() / "r"
