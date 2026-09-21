@@ -28,6 +28,8 @@
       <p><strong class="verdict-{{ verdict.level | replace(' ', '-') }}">{{ verdict.level | capitalize }}</strong>: {{ verdict.summary }}</p>
       <ul class="checks">{% for c in verdict.checks %}<li class="check-{{ c.status }}"><span aria-hidden="true">{{ {"ok": "✓", "no": "✗", "warn": "!", "info": "·"}[c.status] }}</span> <span class="sr">{{ c.status }}:</span> <strong>{{ c.label }}</strong> {{ c.detail }}</li>{% endfor %}</ul>
       <p class="dim">Advisory only. RepoHub looks for tools on this machine and never runs anything from the repository.</p>
+      {% if claude_cmd %}<h3>Open in Claude Code</h3>
+      <p class="dim">Run this in a terminal (RepoHub cannot open one for you):</p><pre>{{ claude_cmd }}</pre>{% endif %}
       <h3>Latest release</h3>
       {% if d.release %}
         <p>{{ d.release.tag }} {% if d.release.has_arm64 %}<span class="badge ok">arm64</span>{% endif %}</p>

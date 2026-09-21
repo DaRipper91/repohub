@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import shlex
 from contextlib import asynccontextmanager
 import secrets
 from pathlib import Path
@@ -192,7 +193,8 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         starred = await hub.starred(host, slug) if acct.status == "signed in" else None
         return page(request, "repo.html", d=d, readme_html=render_markdown(d.readme) if d.readme else "",
                     is_fav=hub.favorites.is_favorite(d.repo.key), signed_in=acct.status == "signed in", starred=starred,
-                    verdict=await run_in_threadpool(aware.check, d.repo, d.release))
+                    verdict=await run_in_threadpool(aware.check, d.repo, d.release),
+                    claude_cmd=(f"cd {shlex.quote(c.path)} && claude" if (c := aware.clone_of(d.repo)) else ""))
 
     def _in_use() -> list[str]:
         return [str(r) for r in aware.roots()]

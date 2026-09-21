@@ -133,7 +133,7 @@ class RunScreen(Screen):
 class DetailScreen(Screen):
     BINDINGS = [Binding("escape", "back", "Back"), Binding("f", "favorite", "Favorite"),
                 Binding("c", "clone", "Clone"), Binding("s", "star", "Star/unstar"), Binding("k", "fork", "Fork"),
-                Binding("i", "install", "Install/build")]
+                Binding("i", "install", "Install/build"), Binding("o", "open_claude", "Open in Claude Code")]
 
     def __init__(self, hub, host: str, slug: str, clone_root, cloner):
         super().__init__()
@@ -211,6 +211,39 @@ class DetailScreen(Screen):
             self.notify(f"Could not update favorites: {e}", severity="error", markup=False)
             return
         self._render_meta()
+
+    def action_open_claude(self) -> None:
+        """Start Claude Code in the cloned folder, after a y/n. RepoHub is suspended while it runs."""
+        import shlex
+        import shutil
+
+        r = self.detail.repo if self.detail else None
+        clone = self.app.awareness.clone_of(r) if r else None
+        if clone is None:
+            self.notify("Clone this repository first (c), or add its folder on the Folders view (F5)", markup=False)
+            return
+        exe = shutil.which("claude")
+        if exe is None:
+            self.notify(f"Claude Code was not found on PATH. In a terminal: cd {shlex.quote(clone.path)} && claude", markup=False)
+            return
+
+        def done(ok: bool | None) -> None:
+            if not ok:
+                return
+            try:
+                from textual.app import SuspendNotSupported
+            except ImportError:  # older Textual
+                SuspendNotSupported = RuntimeError  # noqa: N806
+            try:
+                with self.app.suspend():
+                    self.app.launcher([exe], cwd=clone.path)
+            except SuspendNotSupported:
+                self.notify(f"This terminal cannot be suspended. Run: cd {shlex.quote(clone.path)} && claude", markup=False)
+            except OSError as e:
+                self.notify(f"Could not start Claude Code: {e}", severity="error", markup=False)
+
+        self.app.push_screen(ConfirmWrite(
+            f"Open Claude Code in this folder?\n{clone.path}\nRepoHub pauses until you leave Claude Code.", ), done)
 
     def action_install(self) -> None:
         runner = getattr(self.app, "runner", None)
@@ -306,13 +339,18 @@ class RepoHubApp(App):
                 Binding("f4", "clear_history", "Clear history"), Binding("f5", "folders", "Folders"), Binding("f6", "guided", "Guided install on/off"),
                 Binding("s", "scan_home", "Scan home", show=False), Binding("w", "scan_system", "Scan all", show=False), Binding("a", "accounts", "Accounts", show=False)]
 
-    def __init__(self, hub, clone_root, shelves=None, cloner=do_clone, awareness=None, roots=None, runner=None):
+    def __init__(self, hub, clone_root, shelves=None, cloner=do_clone, awareness=None, roots=None, runner=None,
+                 launcher=None):
         super().__init__()
         self.hub, self.clone_root, self.cloner = hub, clone_root, cloner
         self.awareness = awareness if awareness is not None else Awareness(clone_root)
         self.roots = roots if roots is not None else ScanRoots()
         self.scan_report = None  # the last folder scan: in memory only
         self._scanning = False
+        if launcher is None:
+            import subprocess
+            launcher = subprocess.run
+        self.launcher = launcher
         self.runner = runner if runner is not None else Runner(self.awareness, Settings(), hub.actions)
         if shelves is None:
             loaded = load_all_shelves()

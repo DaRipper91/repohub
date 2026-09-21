@@ -49,6 +49,7 @@ Issues = "https://github.com/DaRipper91/repohub/issues"
 repohub = "repohub.cli:run"
 repohub-web = "repohub.web.app:main"
 repohub-tui = "repohub.tui.app:main"
+repohub-mcp = "repohub.mcp:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/repohub"]

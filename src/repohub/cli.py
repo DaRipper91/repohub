@@ -129,6 +129,14 @@ def _build_parser() -> argparse.ArgumentParser:
     pl.add_argument("repo", metavar="HOST:OWNER/NAME")
     pl.add_argument("--json", action="store_true")
 
+    sub.add_parser("mcp", help="run the read-only MCP server on stdin/stdout, for Claude Code",
+                   description="Starts RepoHub's read-only MCP server (search, repo, favorites, shelves, recommend, similar, "
+                               "cloned, check, plan, hosts). It cannot change anything. Register it with "
+                               "'repohub claude-setup'.")
+
+    cs = sub.add_parser("claude-setup", help="print the commands that connect RepoHub to Claude Code (changes nothing)")
+    cs.add_argument("--json", action="store_true")
+
     ro = sub.add_parser("roots", help="show the folders RepoHub looks in for clones; --scan suggests more (read-only)",
                         description="Lists the clone folder and any extra folders picked in the web or terminal app. "
                                     "--scan looks for folders that contain git clones (home folder, or --system for the whole "
@@ -513,6 +521,24 @@ def _cmd_plan(args, hub, o: _Out) -> int:
     return EXIT_OK
 
 
+def _cmd_claude_setup(args, hub, o: _Out) -> int:
+    from pathlib import Path
+
+    skill = Path(__file__).parent / "claude" / "skills" / "repohub"
+    steps = [("Register the read-only MCP server (for all your projects)", "claude mcp add --scope user repohub -- repohub mcp"),
+             ("Install the /repohub skill", f"mkdir -p ~/.claude/skills && cp -r '{skill}' ~/.claude/skills/")]
+    if args.json:
+        o.json({"schema_version": SCHEMA_VERSION, "steps": [{"what": w, "command": c} for w, c in steps],
+                "mcp_command": ["repohub", "mcp"], "skill_path": _cell(str(skill))})
+        return EXIT_OK
+    o.out("Run these yourself; this command changes nothing:")
+    for n, (w, c) in enumerate(steps, 1):
+        o.out(f"  {n}. {w}:")
+        o.out(f"     {_cell(c)}")
+    o.out("The MCP server is read-only. Tokens already set for RepoHub (GITHUB_TOKEN and so on) are used for higher rate limits.")
+    return EXIT_OK
+
+
 def _cmd_roots(args, hub, o: _Out) -> int:
     from repohub.config import clone_root
     from repohub.core.roots import ScanRoots, discover, home_start
@@ -631,6 +657,12 @@ def main(argv: list[str] | None = None, *, hub_factory: Callable | None = None,
             return _cmd_check(args, None, o)
         if args.command == "cloned":
             return _cmd_cloned(args, None, o)  # no hub, no network
+        if args.command == "claude-setup":
+            return _cmd_claude_setup(args, None, o)
+        if args.command == "mcp":
+            from repohub.mcp import run as run_mcp
+
+            return run_mcp(stdout=stdout if stdout is not sys.stdout else None)
         if args.command == "roots":
             return _cmd_roots(args, None, o)  # no hub, no network
         if args.command == "plan":
