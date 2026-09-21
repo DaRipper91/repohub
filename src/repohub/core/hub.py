@@ -3,18 +3,22 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import time
 from dataclasses import asdict, dataclass
+from typing import Callable
 
 from repohub.core.browse import Shelf, ShelfEntry
 from repohub.core.cache import Cache
 from repohub.core.models import Release, Repo, SearchFilters
-from repohub.core.providers.base import NotFound, ProviderError
+from repohub.core.providers.base import NotFound, ProviderError, RateLimited
 from repohub.core.search import SearchResult, search_all
 from repohub.core.store import Favorites
 
 SEARCH_TTL = 600
 DETAIL_TTL = 3600
 DEGRADED_TTL = 60
+MIN_LIMIT_WAIT = 60
+MAX_LIMIT_WAIT = 3600
 REFRESH_CONCURRENCY = 8
 MAX_README_CHARS = 200_000
 CURATED_PAGE = 12
@@ -64,8 +68,27 @@ def repo_from_snapshot(entry: ShelfEntry, as_of: str | None) -> Repo:
 
 
 class Hub:
-    def __init__(self, providers: dict, cache: Cache, favorites: Favorites):
+    def __init__(self, providers: dict, cache: Cache, favorites: Favorites, *,
+                 clock: Callable[[], float] = time.time):
         self.providers, self.cache, self.favorites = providers, cache, favorites
+        self._clock = clock
+        self._limited_until: dict[str, tuple[float, str]] = {}  # host -> (until, message)
+
+    def _note_rate_limit(self, host: str, err: RateLimited) -> None:
+        now = self._clock()
+        wait = MIN_LIMIT_WAIT
+        if isinstance(err.reset_at, (int, float)) and not isinstance(err.reset_at, bool):
+            wait = max(MIN_LIMIT_WAIT, min(err.reset_at - now, MAX_LIMIT_WAIT))
+        self._limited_until[host] = (now + wait, str(err))
+
+    def _limit_message(self, host: str) -> str | None:
+        hit = self._limited_until.get(host)
+        if hit is None:
+            return None
+        if self._clock() < hit[0]:
+            return hit[1]
+        del self._limited_until[host]
+        return None
 
     async def search(self, query: str, filters: SearchFilters | None = None) -> SearchResult:
         filters = filters or SearchFilters()
@@ -115,7 +138,13 @@ class Hub:
         async def one(entry: ShelfEntry) -> tuple[Repo | None, str | None]:
             try:
                 async with sem:
+                    limited = self._limit_message(entry.host)
+                    if limited is not None:  # host rate-limited: keep the snapshot, no request
+                        return None, limited
                     return await self.repo_summary(entry.host, entry.slug), None
+            except RateLimited as e:
+                self._note_rate_limit(entry.host, e)
+                return None, str(e)
             except ProviderError as e:
                 return None, str(e)
             except Exception:

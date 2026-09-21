@@ -43,4 +43,5 @@ class FakeProvider:
 
 def make_hub(*providers, clock=None):
     kw = {"now": clock} if clock else {}
-    return Hub({p.host: p for p in providers}, Cache(**kw), Favorites(**kw))
+    hub_kw = {"clock": clock} if clock else {}
+    return Hub({p.host: p for p in providers}, Cache(**kw), Favorites(**kw), **hub_kw)

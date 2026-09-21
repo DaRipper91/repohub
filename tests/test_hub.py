@@ -464,3 +464,61 @@ async def test_curated_page_refresh_false_ignores_cache_and_unknown_hosts():
     assert page.errors == {} and page.items == []
     page = await hub.curated_page(curated(3, host="gitlab"), 0, 2, refresh=False)
     assert len(page.items) == 2 and page.errors == {} and not any(i.live for i in page.items)
+
+
+# ---- rate-limit memory for curated refreshes
+
+class LimitedProvider(FakeProvider):
+    def __init__(self, host, reset_at=None):
+        super().__init__(host)
+        self.reset_at = reset_at
+
+    async def repo(self, slug):
+        self.calls += 1
+        await asyncio.sleep(0)
+        raise RateLimited(self.host, "rate limited", self.reset_at)
+
+
+async def test_rate_limit_stops_further_calls_within_first_page():
+    from repohub.core.hub import REFRESH_CONCURRENCY
+    gh = LimitedProvider("github")
+    hub = make_hub(gh, clock=Clock())
+    page = await hub.curated_page(curated(25), 0, 25)
+    assert gh.calls <= REFRESH_CONCURRENCY
+    assert page.errors == {"github": "rate limited"}
+    assert all(not i.live for i in page.items) and page.items[20].repo.stars == 120
+
+
+async def test_second_view_inside_window_makes_no_calls_and_after_window_calls_again():
+    clock = Clock()
+    gh = LimitedProvider("github")
+    hub = make_hub(gh, clock=clock)
+    await hub.curated_page(curated(5), 0, 12)
+    n = gh.calls
+    page = await hub.curated_page(curated(5), 0, 12)
+    assert gh.calls == n
+    assert page.errors == {"github": "rate limited"} and page.items[2].repo.stars == 102
+    clock.t += 61
+    await hub.curated_page(curated(5), 0, 12)
+    assert gh.calls > n
+
+
+async def test_other_host_still_refreshed_while_one_is_limited():
+    gh = LimitedProvider("github")
+    gl = live_provider("gitlab", n=1)
+    hub = make_hub(gh, gl, clock=Clock())
+    entries = (ShelfEntry("github", "o/a"), ShelfEntry("gitlab", "o/r0"))
+    page = await hub.curated_page(Shelf(name="M", repos=entries), 0, 12)
+    assert [i.live for i in page.items] == [False, True]
+    assert set(page.errors) == {"github"}
+
+
+@pytest.mark.parametrize("reset_delta,expected", [
+    (None, 60), (-500, 60), (10, 60), (600, 600), (10**9, 3600)])
+async def test_rate_limit_window_is_clamped(reset_delta, expected):
+    clock = Clock()
+    reset = None if reset_delta is None else int(clock.t) + reset_delta
+    gh = LimitedProvider("github", reset_at=reset)
+    hub = make_hub(gh, clock=clock)
+    await hub.curated_page(curated(1), 0, 12)
+    assert hub._limited_until["github"][0] == clock.t + expected
