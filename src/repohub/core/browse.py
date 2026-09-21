@@ -304,12 +304,12 @@ def _problem_text(path: Path, err: object) -> str:
 
 def load_all_shelves(personal_path: Path | str | None = None) -> LoadedShelves:
     result = LoadedShelves()
-    for name in ("shelves.yaml", "catalog_shelves.yaml"):
+    for name in ("shelves.yaml", "catalog_shelves.yaml", "catalog_codeberg.yaml"):
         text = _packaged_text(name)
         if text is None:
             if name == "shelves.yaml":
                 raise FileNotFoundError(name)
-            continue  # the catalog is optional
+            continue  # the catalog files are optional
         result.shelves.extend(parse_shelves(_safe_load(text), source=name))
     path = Path(personal_path) if personal_path else personal_shelves_path()
     try:

@@ -67,6 +67,9 @@ def repo_from_snapshot(entry: ShelfEntry, as_of: str | None) -> Repo:
                 homepage="", fork=False)
 
 
+NOT_CONFIGURED = "host not configured"
+
+
 class Hub:
     def __init__(self, providers: dict, cache: Cache, favorites: Favorites, *,
                  clock: Callable[[], float] = time.time, host_problems: list[str] | None = None):
@@ -117,7 +120,7 @@ class Hub:
     async def repo_summary(self, host: str, slug: str) -> Repo:
         provider = self.providers.get(host)
         if provider is None:
-            raise ProviderError(host, "unknown host")
+            raise ProviderError(host, NOT_CONFIGURED)
         key = f"repo:{host}:{slug.lower()}"
         hit = self.cache.get(key)
         if hit is not None:
@@ -139,6 +142,8 @@ class Hub:
         async def one(entry: ShelfEntry) -> tuple[Repo | None, str | None]:
             try:
                 async with sem:
+                    if entry.host not in self.providers:  # never call a provider for an unconfigured host
+                        return None, NOT_CONFIGURED
                     limited = self._limit_message(entry.host)
                     if limited is not None:  # host rate-limited: keep the snapshot, no request
                         return None, limited
@@ -172,7 +177,7 @@ class Hub:
     async def detail(self, host: str, slug: str) -> Detail:
         provider = self.providers.get(host)
         if provider is None:
-            raise ProviderError(host, "unknown host")
+            raise ProviderError(host, NOT_CONFIGURED)
         key = f"detail:{host}:{slug.lower()}"
         hit = self.cache.get(key)
         if hit is not None:

@@ -336,9 +336,9 @@ async def test_refreshed_slug_case_difference_maps_to_right_entry():
     assert [(i.repo.stars, i.note, i.live) for i in page.items] == [(50, "nb", True), (60, "nq", True)]
 
 
-async def test_unknown_host_keeps_snapshot_and_reports_unknown_host():
+async def test_unknown_host_keeps_snapshot_and_reports_host_not_configured():
     page = await make_hub().curated_page(curated(2, host="gitlab"), 0, 12)
-    assert page.errors == {"gitlab": "unknown host"} and not any(i.live for i in page.items)
+    assert page.errors == {"gitlab": "host not configured"} and not any(i.live for i in page.items)
 
 
 async def test_curated_refresh_concurrency_bounded_and_full():
@@ -372,9 +372,9 @@ async def test_repo_summary_caches_for_ttl_and_refetches_after():
     assert gh.calls == 2
 
 
-async def test_repo_summary_unknown_host_and_provider_errors_propagate():
+async def test_repo_summary_unconfigured_host_and_provider_errors_propagate():
     hub = make_hub(FakeProvider("github", detail_error=ProviderError("github", "boom")))
-    with pytest.raises(ProviderError, match="unknown host") as ei:
+    with pytest.raises(ProviderError, match="host not configured") as ei:
         await hub.repo_summary("gitlab", "a/b")
     assert ei.value.host == "gitlab"
     with pytest.raises(ProviderError, match="boom"):
@@ -522,3 +522,46 @@ async def test_rate_limit_window_is_clamped(reset_delta, expected):
     hub = make_hub(gh, clock=clock)
     await hub.curated_page(curated(1), 0, 12)
     assert hub._limited_until["github"][0] == clock.t + expected
+
+
+async def test_mixed_curated_page_only_calls_configured_provider():
+    gh = FakeProvider("github", [mk("github", "o/r0", 999), mk("github", "o/r1", 999)])
+    entries = (ShelfEntry("github", "o/r0", "n0", Snapshot("s0", 1)),
+               ShelfEntry("gone", "o/x", "nx", Snapshot("sx", 7)),
+               ShelfEntry("gone", "o/y", "ny", Snapshot("sy", 8)),
+               ShelfEntry("github", "o/r1", "n1", Snapshot("s1", 2)))
+    page = await make_hub(gh).curated_page(Shelf(name="M", repos=entries, as_of="2026-09-01"), 0, 12)
+    assert gh.calls == 2
+    assert [i.live for i in page.items] == [True, False, False, True]
+    assert page.items[1].repo.stars == 7 and page.items[1].repo.description == "sx"
+    assert page.errors == {"gone": "host not configured"}  # one message per host id
+
+
+async def test_unconfigured_host_does_not_touch_rate_limit_memory():
+    hub = make_hub(FakeProvider("github", [mk("github", "o/r0", 5)]))
+    await hub.curated_page(curated(3, host="gone"), 0, 12)
+    assert hub._limited_until == {}
+    assert hub._limit_message("gone") is None
+
+
+async def test_repo_summary_and_detail_for_registered_host_without_provider():
+    from repohub.core import hosts
+    assert "codeberg" in hosts.registry()
+    hub = make_hub(FakeProvider("github"))
+    for call in (hub.repo_summary, hub.detail):
+        with pytest.raises(ProviderError, match="^host not configured$") as ei:
+            await call("codeberg", "o/r")
+        assert ei.value.host == "codeberg"
+
+
+async def test_removed_host_keeps_favorites_and_refresh_skips_them():
+    from repohub.core import hosts
+    gh = FakeProvider("github", [mk("github", "o/r", 5)])
+    hub = make_hub(gh)
+    hub.favorites.add(mk("gone", "o/r"))
+    hub.favorites.add(mk("github", "o/r"))
+    reg = hosts.registry()
+    hosts.set_registry(hosts.HostRegistry([s for s in reg.specs if s.id != "gitlab"]))
+    await hub.refresh_favorites(max_age=-1)
+    assert {r.key for r in hub.favorites.list()} == {"gone:o/r", "github:o/r"}
+    assert gh.calls == 1  # only the configured host was contacted

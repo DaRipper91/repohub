@@ -747,7 +747,7 @@ async def test_favorite_row_of_unconfigured_host_shows_clean_error(tmp_path):
         await pilot.press("enter")
         await settle(app, pilot)
         assert isinstance(app.screen, DetailScreen) and app.screen.detail is None
-        assert "unknown host" in text_of(app.screen.query_one("#meta", Static))
+        assert "host not configured" in text_of(app.screen.query_one("#meta", Static))
         await pilot.press("c")
         await pilot.pause()
         assert app.is_running and not isinstance(app.screen, type(None))
@@ -780,3 +780,16 @@ async def test_host_problems_sit_next_to_shelf_problems(tmp_path, monkeypatch):
         await pilot.pause()
         status = text_of(app.query_one("#status", Static))
         assert "shelf bad" in status and "host bad" in status
+
+
+async def test_unconfigured_host_shelf_status_shows_plain_message(tmp_path):
+    from repohub.core.browse import ShelfEntry, Snapshot
+    shelf = Shelf("Gone", repos=(ShelfEntry("gone", "o/r", "n", Snapshot("snap", 3)),), as_of="2026-09-01")
+    app = RepoHubApp(make_hub(FakeProvider("github")), tmp_path, shelves=[shelf],
+                     cloner=lambda url, root: tmp_path / "r")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.query_one(DataTable).focus()
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert "gone: host not configured" in text_of(app.query_one("#status"))

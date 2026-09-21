@@ -603,3 +603,22 @@ def test_no_host_problems_no_banners(tmp_path):
 def test_css_has_codeberg_badge(tmp_path):
     client, *_ = _multi(tmp_path)
     assert ".badge.codeberg" in client.get("/static/app.css").text
+
+
+def test_unconfigured_host_shelf_renders_snapshot_and_error_banner(tmp_path):
+    gh = FakeProvider("github")
+    shelf = Shelf(name="Gone", repos=(ShelfEntry("gone", "o/r", "gnote", Snapshot("gsnap", 5, "Go", "MIT", "2026-08-01")),),
+                  as_of="2026-09-01")
+    client = TestClient(create_app(make_hub(gh), tmp_path, session_token=TOKEN, shelves=[shelf]),
+                        base_url="http://localhost")
+    html = client.get("/shelves/0").text
+    assert "gsnap" in html and "gnote" in html
+    assert '<p class="banner warn">gone: host not configured</p>' in html
+    assert gh.calls == 0
+
+
+def test_codeberg_shelf_on_home_page(tmp_path, monkeypatch):
+    monkeypatch.setattr("repohub.core.browse.personal_shelves_path", lambda: tmp_path / "none.yaml")
+    client = TestClient(create_app(make_hub(FakeProvider("github")), tmp_path, session_token=TOKEN),
+                        base_url="http://localhost")
+    assert "Catalog: Codeberg" in client.get("/").text

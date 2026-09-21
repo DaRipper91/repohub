@@ -463,3 +463,36 @@ def test_custom_gitlab_kind_host_allows_nested_slug():
     from repohub.core.hosts import BUILTIN_HOSTS, HostRegistry, HostSpec, set_registry
     set_registry(HostRegistry(BUILTIN_HOSTS + (HostSpec("mylab", "gitlab", "My Lab", "git.example.org", "https://git.example.org/api/v4"),)))
     assert _one(["mylab:g/sub/p"]).repos[0].slug == "g/sub/p"
+
+
+def test_load_all_shelves_packaged_order_defaults_catalog_codeberg_personal(tmp_path):
+    p = tmp_path / "mine.yaml"
+    p.write_text("- name: Mine\n  repos:\n    - github:a/b\n")
+    names = [s.name for s in load_all_shelves(personal_path=p).shelves]
+    assert (names.index("Terminal tools") < names.index("Catalog: Terminal & TUI")
+            < names.index("Catalog: Codeberg") < names.index("Mine"))
+    assert names[-2:] == ["Catalog: Codeberg", "Mine"]
+
+
+def test_missing_optional_codeberg_file_is_not_an_error(tmp_path, monkeypatch):
+    real = browse._packaged_text
+    monkeypatch.setattr(browse, "_packaged_text", lambda n: None if n == "catalog_codeberg.yaml" else real(n))
+    r = load_all_shelves(personal_path=tmp_path / "none.yaml")
+    assert r.problems == [] and "Catalog: Codeberg" not in [s.name for s in r.shelves]
+
+
+def test_broken_codeberg_file_still_raises(tmp_path, monkeypatch):
+    real = browse._packaged_text
+    monkeypatch.setattr(browse, "_packaged_text",
+                        lambda n: "- name: 5\n" if n == "catalog_codeberg.yaml" else real(n))
+    with pytest.raises(ValueError):
+        load_all_shelves(personal_path=tmp_path / "none.yaml")
+
+
+def test_entry_for_unconfigured_host_loads_but_hostile_slug_is_rejected():
+    s = browse.parse_shelves([{"name": "X", "repos": ["gone:o/r"]}])[0]
+    assert s.repos[0].host == "gone"
+    with pytest.raises(ValueError, match="invalid slug"):
+        browse.parse_shelves([{"name": "X", "repos": ["gone:../../etc/passwd"]}])
+    with pytest.raises(ValueError, match="invalid slug"):
+        browse.parse_shelves([{"name": "X", "repos": ["gone:o/r?x=<script>"]}])

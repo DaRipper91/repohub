@@ -17,6 +17,7 @@ EXPECTED_NAMES = [
     "Catalog: Developer Tools",
     "Catalog: Hardware, Radio & Phones",
 ]
+CODEBERG_NAME = "Catalog: Codeberg"
 BAD_CHARS = re.compile("[\x00-\x08\x0b-\x1f\x7f-\x9f‎‏‪-‮⁦-⁩]")
 
 
@@ -27,16 +28,18 @@ def loaded(tmp_path):
 
 @pytest.fixture
 def catalog(loaded):
-    return [s for s in loaded.shelves if s.name.startswith("Catalog: ")]
+    # the 8 catalog shelves from catalog_shelves.yaml (Catalog: Codeberg lives in its own file)
+    return [s for s in loaded.shelves if s.name.startswith("Catalog: ") and s.name != CODEBERG_NAME]
 
 
 def test_packaged_catalog_follows_search_shelves(loaded, catalog):
     assert loaded.problems == []
     assert len(catalog) == 8
-    n_search = len(loaded.shelves) - 8
+    n_search = len(loaded.shelves) - 9  # 8 catalog shelves + the Codeberg shelf
     assert n_search >= 1
     assert all(not s.curated for s in loaded.shelves[:n_search])
-    assert loaded.shelves[n_search:] == catalog
+    assert loaded.shelves[n_search:n_search + 8] == catalog
+    assert loaded.shelves[-1].name == CODEBERG_NAME
 
 
 def test_shelf_order_is_stable(catalog):
@@ -100,3 +103,43 @@ def test_loading_is_fast_and_uses_explicit_personal_path(tmp_path, monkeypatch):
     result = load_all_shelves(personal_path=tmp_path / "none.yaml")
     assert time.perf_counter() - t < 5.0
     assert result.problems == []
+
+
+# ---- the packaged Codeberg shelf (Task 8) ----
+from repohub.core.browse import MAX_SLUG  # noqa: E402
+from repohub.core.providers.base import valid_slug  # noqa: E402
+
+
+@pytest.fixture
+def codeberg(loaded):
+    found = [s for s in loaded.shelves if s.name == CODEBERG_NAME]
+    assert len(found) == 1
+    return found[0]
+
+
+def test_codeberg_file_is_packaged():
+    assert resources.files("repohub.core").joinpath("catalog_codeberg.yaml").is_file()
+
+
+def test_codeberg_shelf_has_18_codeberg_entries(codeberg):
+    assert codeberg.curated and len(codeberg.repos) == 18
+    assert all(e.host == "codeberg" for e in codeberg.repos)
+    assert codeberg.as_of == "2026-09-21"
+
+
+def test_codeberg_entries_are_valid_and_complete(codeberg):
+    keys = [e.key for e in codeberg.repos]
+    assert len(keys) == len(set(keys))
+    assert not BAD_CHARS.search(codeberg.name)
+    for e in codeberg.repos:
+        assert len(e.slug) <= MAX_SLUG and valid_slug(e.slug, "github"), e.key
+        assert e.note.strip() and not BAD_CHARS.search(e.note), e.key
+        assert e.snapshot is not None, e.key
+        assert e.snapshot.description.strip() and not BAD_CHARS.search(e.snapshot.description), e.key
+        assert isinstance(e.snapshot.stars, int) and not isinstance(e.snapshot.stars, bool)
+        assert e.snapshot.stars >= 0, e.key
+
+
+def test_nine_packaged_curated_shelves(loaded):
+    assert sum(1 for s in loaded.shelves if s.curated) == 9
+    assert sum(len(s.repos) for s in loaded.shelves if s.curated) == 171 + 18

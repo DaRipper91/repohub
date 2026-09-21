@@ -493,3 +493,22 @@ def test_tokens_from_env_never_reach_any_output(monkeypatch, shelves, config_dir
                  ["repo", "nowhere:o/r"], ["shelves"]):
         code, out, err = run(argv, hub)
         assert secret not in out and secret not in err
+
+
+def test_shelf_json_for_unconfigured_host_is_not_live(monkeypatch):
+    shelf = Shelf(name="Gone", repos=(ShelfEntry("gone", "o/r", "gnote", Snapshot("gsnap", 5)),), as_of="2026-09-01")
+    monkeypatch.setattr(cli, "load_all_shelves", lambda: LoadedShelves([shelf], []))
+    g = gh()
+    code, out, err = run(["shelf", "0", "--json"], make_hub(g))
+    doc = json.loads(out)
+    assert code == 1, (out, err)  # every entry failed to refresh (partial failure would be 3)
+    assert doc["repos"][0]["live"] is False and doc["repos"][0]["stars"] == 5
+    assert doc["errors"] == {"gone": "host not configured"} and g.calls == 0
+
+
+def test_shelves_json_lists_codeberg_shelf(monkeypatch, tmp_path):
+    monkeypatch.setattr("repohub.core.browse.personal_shelves_path", lambda: tmp_path / "none.yaml")
+    code, out, _ = run(["shelves", "--json"])
+    doc = json.loads(out)
+    cb = [s for s in doc["shelves"] if s["name"] == "Catalog: Codeberg"]
+    assert code == 0 and cb and cb[0]["kind"] == "curated" and cb[0]["entries"] == 18
