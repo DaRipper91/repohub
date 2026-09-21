@@ -1,0 +1,1450 @@
+# Generated once from the 2026-09-20 project catalog. Stats are a snapshot; RepoHub refreshes them when a shelf is opened.
+- name: 'Catalog: Terminal & TUI'
+  as_of: '2026-09-20'
+  repos:
+  - repo: github:jesseduffield/lazygit
+    note: Makes interactive rebases and partial staging fast enough to actually use.
+    snapshot:
+      description: simple terminal UI for git commands
+      stars: 82529
+      language: Go
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:Textualize/rich
+    note: The library behind a huge share of pretty Python CLIs.
+    snapshot:
+      description: Rich is a Python library for rich text and beautiful formatting in the terminal.
+      stars: 57406
+      language: Python
+      license: MIT
+      pushed_at: '2026-06-23'
+  - repo: github:jesseduffield/lazydocker
+    note: One screen for logs, stats and restarts.
+    snapshot:
+      description: The lazier way to manage everything docker
+      stars: 52880
+      language: Go
+      license: MIT
+      pushed_at: '2026-04-19'
+  - repo: github:charmbracelet/bubbletea
+    note: The base for lots of polished Go TUIs.
+    snapshot:
+      description: A powerful little TUI framework 🏗
+      stars: 45047
+      language: Go
+      license: MIT
+      pushed_at: '2026-09-17'
+  - repo: github:sxyazi/yazi
+    note: Feels instant even in huge directories, with a plugin system.
+    snapshot:
+      description: 💥 Blazing fast terminal file manager written in Rust, based on async I/O.
+      stars: 42321
+      language: Rust
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:nushell/nushell
+    note: Pipelines that pass tables instead of text.
+    snapshot:
+      description: A new type of shell
+      stars: 40533
+      language: Rust
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:Textualize/textual
+    note: Build a full TUI with widgets and CSS-like styling in Python.
+    snapshot:
+      description: The lean application framework for Python. Build sophisticated user interfaces with a simple
+        Python API. Run your apps in the terminal and a web browser.
+      stars: 37292
+      language: Python
+      license: MIT
+      pushed_at: '2026-07-11'
+  - repo: github:zellij-org/zellij
+    note: A friendlier tmux alternative with layouts and a plugin system.
+    snapshot:
+      description: A terminal workspace with batteries included
+      stars: 35479
+      language: Rust
+      license: MIT
+      pushed_at: '2026-09-18'
+  - repo: github:aristocratos/btop
+    note: The prettiest way to watch what your machine is doing.
+    snapshot:
+      description: A monitor of resources
+      stars: 34674
+      language: C++
+      license: Apache-2.0
+      pushed_at: '2026-09-19'
+  - repo: github:atuinsh/atuin
+    note: Fuzzy-search every command you have ever run, with context.
+    snapshot:
+      description: ✨ Making your shell magical
+      stars: 31761
+      language: Rust
+      license: MIT
+      pushed_at: '2026-09-19'
+  - repo: github:wezterm/wezterm
+    note: A programmable terminal with built-in multiplexing and serial-port support.
+    snapshot:
+      description: A GPU-accelerated cross-platform terminal emulator and multiplexer written by @wez and implemented
+        in Rust
+      stars: 28963
+      language: Rust
+      license: NOASSERTION
+      pushed_at: '2026-09-17'
+  - repo: github:charmbracelet/glow
+    note: Makes READMEs and notes readable without leaving the shell.
+    snapshot:
+      description: Render markdown on the CLI, with pizzazz! 💅🏻
+      stars: 27398
+      language: Go
+      license: MIT
+      pushed_at: '2026-09-14'
+  - repo: github:ratatui/ratatui
+    note: The library behind many of the Rust TUIs in this list, if you want to build your own.
+    snapshot:
+      description: A Rust crate for cooking up terminal user interfaces (TUIs) 👨‍🍳🐀 https://ratatui.rs
+      stars: 22681
+      language: Rust
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:gitui-org/gitui
+    note: A lighter alternative to lazygit for people who prefer a single Rust binary.
+    snapshot:
+      description: Blazing 💥 fast terminal-ui for git written in rust 🦀
+      stars: 22509
+      language: Rust
+      license: MIT
+      pushed_at: '2026-08-04'
+  - repo: github:charmbracelet/vhs
+    note: 'Reproducible terminal demos: write a script, get a GIF.'
+    snapshot:
+      description: Your CLI home video recorder 📼
+      stars: 20944
+      language: Go
+      license: MIT
+      pushed_at: '2026-09-09'
+  - repo: github:asciinema/asciinema
+    note: Record lightweight text-based session recordings you can replay and embed.
+    snapshot:
+      description: Terminal session recorder, streamer and player 📹
+      stars: 17821
+      language: Rust
+      license: GPL-3.0
+      pushed_at: '2026-08-14'
+  - repo: github:yaronn/blessed-contrib
+    note: Lets you build a wall-of-graphs dashboard in a few dozen lines of Node.
+    snapshot:
+      description: Build terminal dashboards using ascii/ansi art and javascript
+      stars: 15774
+      language: JavaScript
+      license: MIT
+      pushed_at: '2026-05-01'
+  - repo: github:ClementTsang/bottom
+    note: Charts, per-process views and a customizable layout in one small binary.
+    snapshot:
+      description: Yet another cross-platform graphical process/system monitor.
+      stars: 14038
+      language: Rust
+      license: MIT
+      pushed_at: '2026-09-18'
+  - repo: github:hpjansson/chafa
+    note: Show pictures in the terminal, with sixel or kitty protocol support.
+    snapshot:
+      description: 📺🗿 Terminal graphics for the 21st century.
+      stars: 5261
+      language: C
+      license: LGPL-3.0
+      pushed_at: '2026-09-19'
+  - repo: github:amir20/dtop
+    note: Gives you a live, htop-style view of containers without opening a browser.
+    snapshot:
+      description: Terminal dashboard for Docker monitoring across multiple hosts with Dozzle integration.
+      stars: 1423
+      language: Rust
+      license: MIT
+      pushed_at: '2026-09-10'
+  - repo: github:thomas-mauran/chess-tui
+    note: A quick, fun way to play against an engine without leaving the shell.
+    snapshot:
+      description: Play chess in any terminal. Rust TUI, Stockfish, Lichess.
+      stars: 1180
+      language: Rust
+      license: MIT
+      pushed_at: '2026-09-17'
+  - repo: github:gnomeria/usbtree
+    note: Handy for watching phones and dongles connect; full activity metrics on Linux.
+    snapshot:
+      description: Live USB device tree in your terminal. Rust TUI, no root, no libusb. Full activity metrics on
+        Linux; device tree on macOS/Windows.
+      stars: 658
+      language: Rust
+      license: MIT
+      pushed_at: '2026-08-20'
+  - repo: gitlab:jallbrit/cbonsai
+    note: 'Pure ornamental fun: a screensaver for the shell.'
+    snapshot:
+      description: grow bonsai trees in your terminal
+      stars: 431
+      language: C
+      license: ''
+      pushed_at: '2026-09-18'
+  - repo: gitlab:slackermedia/bashcrawl
+    note: Learn ls and cat by exploring a dungeon.
+    snapshot:
+      description: Learn Linux commands by playing a simple text adventure.
+      stars: 293
+      language: Shell
+      license: GNU GPLv3
+      pushed_at: '2026-06-09'
+  - repo: gitlab:phoneybadger/pokemon-colorscripts
+    note: A silly shell-startup decoration.
+    snapshot:
+      description: CLI utility to print out images of pokemon to terminal
+      stars: 187
+      language: Python
+      license: ''
+      pushed_at: '2026-06-02'
+  - repo: github:luoyuctl/agenttrace
+    note: Could show what your own AI coding sessions actually cost.
+    snapshot:
+      description: 'Local-first Rust TUI/CLI for auditing AI coding-agent sessions: cost, tokens, latency, failures,
+        and health｜本地优先 Rust TUI/CLI，审计 AI 编程 Agent 会话的成本、Token、延迟、失败与健康度'
+      stars: 135
+      language: Rust
+      license: MIT
+      pushed_at: '2026-09-14'
+  - repo: gitlab:craigbarnes/dte
+    note: A minimal editor that is easy to understand and hack.
+    snapshot:
+      description: A small, configurable terminal text editor. https://craigbarnes.gitlab.io/dte/
+      stars: 42
+      language: C
+      license: ''
+      pushed_at: '2026-09-14'
+- name: 'Catalog: Data, Maps & OSINT'
+  as_of: '2026-09-20'
+  repos:
+  - repo: github:d3/d3
+    note: The foundation of most bespoke web charts.
+    snapshot:
+      description: 'Bring data to life with SVG, Canvas and HTML. :bar_chart::chart_with_upwards_trend::tada:'
+      stars: 113746
+      language: Shell
+      license: ISC
+      pushed_at: '2026-05-28'
+  - repo: github:koala73/worldmonitor
+    note: A whole situational-awareness console that runs in a browser.
+    snapshot:
+      description: Real-time global intelligence dashboard. AI-powered news aggregation, geopolitical monitoring,
+        and infrastructure tracking in a unified situational awareness interface
+      stars: 87089
+      language: TypeScript
+      license: AGPL-3.0
+      pushed_at: '2026-09-20'
+  - repo: github:grafana/grafana
+    note: The standard dashboard tool for homelab metrics.
+    snapshot:
+      description: The open and composable observability and data visualization platform. Visualize metrics, logs,
+        and traces from multiple sources like Prometheus, Loki, Elasticsearch, InfluxDB, Postgres and many more.
+      stars: 76822
+      language: TypeScript
+      license: AGPL-3.0
+      pushed_at: '2026-09-20'
+  - repo: github:bilawalsidhu/gods-eye-view
+    note: Live flights, satellites and more on a Cesium globe.
+    snapshot:
+      description: A spy satellite simulator in your browser, except the data is real. Live open source spatial
+        intelligence on a photorealistic 3D globe.
+      stars: 39487
+      language: JavaScript
+      license: NOASSERTION
+      pushed_at: '2026-09-17'
+  - repo: github:lissy93/web-check
+    note: Point it at your own domain and see what an outsider can learn.
+    snapshot:
+      description: 🕵️‍♂️ All-in-one OSINT tool for analysing any website
+      stars: 34880
+      language: TypeScript
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:smicallef/spiderfoot
+    note: Point it at your own domains and IPs to see what is exposed.
+    snapshot:
+      description: SpiderFoot automates OSINT for threat intelligence and mapping your attack surface.
+      stars: 22429
+      language: Python
+      license: MIT
+      pushed_at: '2026-04-13'
+  - repo: github:visgl/deck.gl
+    note: Millions of points on a map, smoothly.
+    snapshot:
+      description: WebGL2 powered visualization framework
+      stars: 14598
+      language: TypeScript
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:keplergl/kepler.gl
+    note: Drag a CSV in and get an animated map.
+    snapshot:
+      description: Kepler.gl is a powerful open source geospatial analysis tool for large-scale data sets.
+      stars: 12020
+      language: TypeScript
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:maplibre/maplibre-gl-js
+    note: The open-source base map engine behind many projects.
+    snapshot:
+      description: MapLibre GL JS - Interactive vector tile maps in the browser
+      stars: 11709
+      language: TypeScript
+      license: NOASSERTION
+      pushed_at: '2026-09-18'
+  - repo: github:sgoudelis/ground-station
+    note: 'A full ground-station dashboard; tracking works without any radio. Needs: RTL-SDR or similar (for reception).'
+    snapshot:
+      description: Browser-based ground station suite for satellite tracking, SDR reception, hardware control, and
+        telemetry decoding
+      stars: 4804
+      language: JavaScript
+      license: GPL-3.0
+      pushed_at: '2026-09-19'
+  - repo: github:wiedehopf/tar1090
+    note: 'The nicest live aircraft map front end for a home receiver. Needs: RTL-SDR dongle plus antenna.'
+    snapshot:
+      description: Provides an improved webinterface for use with ADS-B decoders readsb / dump1090-fa
+      stars: 1910
+      language: JavaScript
+      license: NOASSERTION
+      pushed_at: '2026-09-05'
+  - repo: github:csete/gpredict
+    note: Track satellites and predict passes over your location.
+    snapshot:
+      description: Gpredict satellite tracking application
+      stars: 1181
+      language: C
+      license: GPL-2.0
+      pushed_at: '2026-08-16'
+  - repo: github:flightaware/dump1090
+    note: 'The classic tool for tracking planes with a cheap dongle. Needs: RTL-SDR dongle plus antenna.'
+    snapshot:
+      description: Dump1090 is a simple Mode S decoder for RTLSDR devices
+      stars: 1145
+      language: C
+      license: NOASSERTION
+      pushed_at: '2026-08-14'
+  - repo: github:jvde-github/AIS-catcher
+    note: 'Track ships from your window with a $30 dongle. Needs: RTL-SDR or other SDR.'
+    snapshot:
+      description: AIS receiver for RTL SDR dongles, Airspy R2, Airspy Mini, Airspy HF+, HackRF, SDRplay and SoapySDR
+      stars: 782
+      language: C++
+      license: GPL-3.0
+      pushed_at: '2026-09-20'
+  - repo: github:wiedehopf/readsb
+    note: 'Decodes aircraft transponder signals into usable data. Needs: RTL-SDR dongle plus antenna.'
+    snapshot:
+      description: ADS-B decoder swiss knife
+      stars: 683
+      language: C
+      license: NOASSERTION
+      pushed_at: '2026-09-18'
+  - repo: github:Flowm/satvis
+    note: See the sky's satellites in your browser.
+    snapshot:
+      description: 3D satellite tracker and pass predictor. 12,000+ satellites live on a globe or in a compass-aimed
+        sky view, from CelesTrak element sets. Built with CesiumJS and Vue.
+      stars: 406
+      language: TypeScript
+      license: MIT
+      pushed_at: '2026-09-13'
+  - repo: github:ShenMian/tracker
+    note: Satellite tracking in a terminal window.
+    snapshot:
+      description: A terminal-based real-time satellite tracking and orbit prediction application.
+      stars: 327
+      language: Rust
+      license: Apache-2.0
+      pushed_at: '2026-07-05'
+- name: 'Catalog: Local AI'
+  as_of: '2026-09-20'
+  repos:
+  - repo: github:n8n-io/n8n
+    note: A self-hosted Zapier alternative.
+    snapshot:
+      description: Fair-code workflow automation platform with native AI capabilities. Combine visual building with
+        custom code, self-host or cloud, 400+ integrations.
+      stars: 205471
+      language: TypeScript
+      license: NOASSERTION
+      pushed_at: '2026-09-20'
+  - repo: github:ollama/ollama
+    note: The easiest way to try local LLMs.
+    snapshot:
+      description: Get up and running with Kimi, GLM, MiniMax, DeepSeek, gpt-oss, Qwen, Gemma and other models.
+      stars: 181323
+      language: Go
+      license: MIT
+      pushed_at: '2026-09-19'
+  - repo: github:langgenius/dify
+    note: Drag-and-drop LLM app building.
+    snapshot:
+      description: Build Agentic workflows, RAG pipelines, with rich AI model and tool support on one collaborative
+        workspace. Deploy on cloud, VPC, or self-hosted, so teams move from prototype to production without rebuilding
+        the stack.
+      stars: 156616
+      language: TypeScript
+      license: NOASSERTION
+      pushed_at: '2026-09-20'
+  - repo: github:open-webui/open-webui
+    note: A ChatGPT-style front end for your local models.
+    snapshot:
+      description: User-friendly AI Interface (Supports Ollama, OpenAI API, ...)
+      stars: 152628
+      language: Python
+      license: NOASSERTION
+      pushed_at: '2026-09-19'
+  - repo: github:ggml-org/llama.cpp
+    note: The engine behind much of the local-LLM ecosystem.
+    snapshot:
+      description: LLM inference in C/C++
+      stars: 128962
+      language: C++
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:Graphify-Labs/graphify
+    note: Could map your own projects.
+    snapshot:
+      description: 'Turn any codebase, with its docs, SQL schemas, configs, and PDFs, into a queryable knowledge
+        graph. A /graphify skill for Claude Code, Cursor, Codex, and Gemini CLI: local deterministic AST parsing,
+        every edge explained, no vector store.'
+      stars: 119860
+      language: Python
+      license: Apache-2.0
+      pushed_at: '2026-09-20'
+  - repo: github:Mintplex-Labs/anything-llm
+    note: An all-in-one desktop and server option for private document chat.
+    snapshot:
+      description: Stop renting your intelligence. Own it with AnythingLLM. Everything you need for a powerful local-first
+        agent experience
+      stars: 66260
+      language: JavaScript
+      license: MIT
+      pushed_at: '2026-09-19'
+  - repo: github:ggml-org/whisper.cpp
+    note: Transcribe audio locally on a CPU.
+    snapshot:
+      description: Port of OpenAI's Whisper model in C/C++
+      stars: 53808
+      language: C++
+      license: MIT
+      pushed_at: '2026-09-18'
+  - repo: github:mudler/LocalAI
+    note: A self-hosted OpenAI-compatible server for many model types.
+    snapshot:
+      description: LocalAI is the open-source AI engine. Run any model - LLMs, vision, voice, image, video - on
+        any hardware. No GPU required.
+      stars: 49194
+      language: Go
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:janhq/jan
+    note: A polished desktop chat app for local models.
+    snapshot:
+      description: Jan is an open source alternative to ChatGPT that runs 100% offline on your computer.
+      stars: 44577
+      language: TypeScript
+      license: NOASSERTION
+      pushed_at: '2026-09-19'
+  - repo: github:khoj-ai/khoj
+    note: Search and chat over your own notes.
+    snapshot:
+      description: Your AI second brain. Self-hostable. Get answers from the web or your docs. Build custom agents,
+        schedule automations, do deep research. Turn any online or local LLM into your personal, autonomous AI (gpt,
+        claude, gemini, llama, qwen, mistral). Get started - free.
+      stars: 37435
+      language: Python
+      license: AGPL-3.0
+      pushed_at: '2026-08-02'
+  - repo: github:continuedev/continue
+    note: A local-model-friendly coding assistant.
+    snapshot:
+      description: open-source coding agent
+      stars: 35963
+      language: TypeScript
+      license: Apache-2.0
+      pushed_at: '2026-09-20'
+  - repo: github:qdrant/qdrant
+    note: Production-grade vector search you can run locally.
+    snapshot:
+      description: Qdrant - High-performance, massive-scale Vector Database and Vector Search Engine for the next
+        generation of AI. Also available in the cloud https://cloud.qdrant.io/
+      stars: 34716
+      language: Rust
+      license: Apache-2.0
+      pushed_at: '2026-09-20'
+  - repo: github:getzep/graphiti
+    note: Gives agents memory that tracks facts over time.
+    snapshot:
+      description: Build Real-Time Knowledge Graphs for AI Agents
+      stars: 31030
+      language: Python
+      license: Apache-2.0
+      pushed_at: '2026-09-19'
+  - repo: github:topoteretes/cognee
+    note: Turns documents into a memory layer.
+    snapshot:
+      description: Cognee is the open-source AI memory platform for agents. Give your AI agents persistent long-term
+        memory across sessions with a self-hosted knowledge graph engine.
+      stars: 30864
+      language: Python
+      license: Apache-2.0
+      pushed_at: '2026-09-20'
+  - repo: github:chroma-core/chroma
+    note: The quick way to add embeddings search to a project.
+    snapshot:
+      description: Search infrastructure for AI
+      stars: 29339
+      language: Rust
+      license: Apache-2.0
+      pushed_at: '2026-09-18'
+  - repo: github:mlc-ai/mlc-llm
+    note: Compile and run models across devices.
+    snapshot:
+      description: Universal LLM Deployment Engine with ML Compilation
+      stars: 23170
+      language: Python
+      license: Apache-2.0
+      pushed_at: '2026-08-17'
+  - repo: github:huggingface/transformers.js
+    note: ML demos that run entirely client-side.
+    snapshot:
+      description: State-of-the-art Machine Learning for the web. Run 🤗 Transformers directly in your browser, with
+        no need for a server!
+      stars: 16305
+      language: JavaScript
+      license: Apache-2.0
+      pushed_at: '2026-09-18'
+  - repo: github:lancedb/lancedb
+    note: A vector database that runs inside your process.
+    snapshot:
+      description: Developer-friendly OSS embedded retrieval library for multimodal AI. Search More; Manage Less.
+      stars: 11480
+      language: Rust
+      license: Apache-2.0
+      pushed_at: '2026-09-20'
+  - repo: github:princeton-vl/infinigen
+    note: Stunning generated nature scenes.
+    snapshot:
+      description: Infinite Photorealistic Worlds using Procedural Generation
+      stars: 7270
+      language: Python
+      license: BSD-3-Clause
+      pushed_at: '2026-08-27'
+  - repo: github:leejet/stable-diffusion.cpp
+    note: Image generation without a Python stack.
+    snapshot:
+      description: Diffusion model(SD,Flux,Wan,Qwen Image,Z-Image,...) inference in pure C/C++
+      stars: 7047
+      language: C++
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:Andyyyy64/whichllm
+    note: One command tells you which models fit.
+    snapshot:
+      description: Find the local LLM that actually runs and performs best on your hardware. Ranked by real, recency-aware
+        benchmarks, not parameter count. One command, run it instantly.
+      stars: 6664
+      language: Python
+      license: MIT
+      pushed_at: '2026-09-19'
+- name: 'Catalog: Networking'
+  as_of: '2026-09-20'
+  repos:
+  - repo: github:pi-hole/pi-hole
+    note: See exactly what your devices are trying to reach.
+    snapshot:
+      description: A black hole for Internet advertisements
+      stars: 60994
+      language: Shell
+      license: NOASSERTION
+      pushed_at: '2026-09-19'
+  - repo: github:mitmproxy/mitmproxy
+    note: Inspect what your own apps send over the network.
+    snapshot:
+      description: An interactive TLS-capable intercepting HTTP proxy for penetration testers and software developers.
+      stars: 45103
+      language: Python
+      license: MIT
+      pushed_at: '2026-09-10'
+  - repo: github:juanfont/headscale
+    note: Run your own mesh VPN coordination.
+    snapshot:
+      description: An open source, self-hosted implementation of the Tailscale control server
+      stars: 43996
+      language: Go
+      license: BSD-3-Clause
+      pushed_at: '2026-09-17'
+  - repo: github:GyulyVGC/sniffnet
+    note: Approachable traffic monitoring without Wireshark's learning curve.
+    snapshot:
+      description: Comfortably monitor your network traffic 🕵️‍♂️
+      stars: 41171
+      language: Rust
+      license: Apache-2.0
+      pushed_at: '2026-09-19'
+  - repo: github:AdguardTeam/AdGuardHome
+    note: A single Go binary alternative to Pi-hole.
+    snapshot:
+      description: Network-wide ads & trackers blocking DNS server
+      stars: 36997
+      language: TypeScript
+      license: GPL-3.0
+      pushed_at: '2026-09-18'
+  - repo: github:tailscale/tailscale
+    note: Reach your laptop from your phones with almost no config.
+    snapshot:
+      description: The easiest, most secure way to use WireGuard and 2FA.
+      stars: 36689
+      language: Go
+      license: BSD-3-Clause
+      pushed_at: '2026-09-20'
+  - repo: github:netbirdio/netbird
+    note: An open-source mesh VPN that can be fully self-hosted.
+    snapshot:
+      description: Connect your devices, users, and agents into a secure WireGuard®-based overlay network with SSO,
+        MFA and granular access controls.
+      stars: 29401
+      language: Go
+      license: NOASSERTION
+      pushed_at: '2026-09-20'
+  - repo: github:nmap/nmap
+    note: The classic scanner for auditing your own network.
+    snapshot:
+      description: Nmap - the Network Mapper. Github mirror of official SVN repository.
+      stars: 13642
+      language: C
+      license: NOASSERTION
+      pushed_at: '2026-09-19'
+  - repo: github:orf/gping
+    note: A tiny tool that makes latency visible.
+    snapshot:
+      description: Ping, but with a graph
+      stars: 12685
+      language: Rust
+      license: MIT
+      pushed_at: '2026-09-18'
+  - repo: github:imsnif/bandwhich
+    note: Find out which program is eating your bandwidth.
+    snapshot:
+      description: Terminal bandwidth utilization tool
+      stars: 11981
+      language: Rust
+      license: MIT
+      pushed_at: '2026-08-01'
+  - repo: github:ntop/ntopng
+    note: A full traffic analytics console for your LAN.
+    snapshot:
+      description: Web-based Traffic and Cybersecurity Network Traffic Monitoring
+      stars: 8194
+      language: Lua
+      license: GPL-3.0
+      pushed_at: '2026-09-20'
+  - repo: github:zeek/zeek
+    note: Produces rich logs of everything crossing the wire.
+    snapshot:
+      description: Zeek is a powerful network analysis framework that is much different from the typical IDS you
+        may know.
+      stars: 7972
+      language: C++
+      license: NOASSERTION
+      pushed_at: '2026-09-20'
+  - repo: github:markqvist/Reticulum
+    note: Build networks that do not depend on the internet.
+    snapshot:
+      description: The cryptography-based networking stack for building unstoppable networks with LoRa, Packet Radio,
+        WiFi and everything in between.
+      stars: 7269
+      language: Python
+      license: NOASSERTION
+      pushed_at: '2026-09-19'
+  - repo: github:OISF/suricata
+    note: Learn how IDS rules work on your own traffic.
+    snapshot:
+      description: Suricata is a network Intrusion Detection System, Intrusion Prevention System and Network Security
+        Monitoring engine developed by the OISF and the Suricata community.
+      stars: 6654
+      language: C
+      license: GPL-2.0
+      pushed_at: '2026-09-19'
+  - repo: github:raboof/nethogs
+    note: Simple per-process bandwidth view.
+    snapshot:
+      description: Linux 'net top' tool
+      stars: 3697
+      language: C++
+      license: GPL-2.0
+      pushed_at: '2026-07-23'
+  - repo: gitlab:wireshark/wireshark
+    note: The standard tool for packet analysis.
+    snapshot:
+      description: Wireshark's official code repository. You can keep the releases coming by donating at https://wiresharkfoundation.org/donate/.
+      stars: 1633
+      language: C
+      license: ''
+      pushed_at: '2026-09-20'
+  - repo: github:liamcottle/reticulum-meshchat
+    note: 'Chat over a Reticulum mesh with a friendly UI. Needs: optional radio.'
+    snapshot:
+      description: A simple mesh network communications app powered by the Reticulum Network Stack.
+      stars: 1258
+      language: JavaScript
+      license: MIT
+      pushed_at: '2026-08-15'
+  - repo: github:eric-rolph/packet-highway
+    note: Watching DNS motorcycles and HTTP trucks is surprisingly informative.
+    snapshot:
+      description: 'A 3D network traffic visualizer. Packets become vehicles on a divided highway: inbound traffic
+        drives one way, outbound the other, and each lane carries a class of service (web, DNS, management, infrastructure,
+        file transfer…). Watch your network live, or replay a .pcap with full scrub/seek control.'
+      stars: 24
+      language: Rust
+      license: ''
+      pushed_at: '2026-08-02'
+- name: 'Catalog: Retro, Games & Creative'
+  as_of: '2026-09-20'
+  repos:
+  - repo: github:godotengine/godot
+    note: A complete open-source game engine and editor.
+    snapshot:
+      description: Godot Engine – Multi-platform 2D and 3D game engine
+      stars: 117517
+      language: C++
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:bevyengine/bevy
+    note: A modern ECS engine that is fun to hack on.
+    snapshot:
+      description: A refreshingly simple data-driven game engine built in Rust
+      stars: 48303
+      language: Rust
+      license: Apache-2.0
+      pushed_at: '2026-09-20'
+  - repo: github:processing/p5.js
+    note: The friendliest way to make generative art in a browser.
+    snapshot:
+      description: p5.js is a client-side JS platform that empowers artists, designers, students, and anyone to
+        learn to code and express themselves creatively on the web. It is based on the core principles of Processing.
+        Looking for p5.js 2.0? http://beta.p5js.org
+      stars: 24013
+      language: JavaScript
+      license: LGPL-2.1
+      pushed_at: '2026-09-20'
+  - repo: github:OpenRCT2/OpenRCT2
+    note: Play a classic with modern fixes.
+    snapshot:
+      description: An open source re-implementation of RollerCoaster Tycoon 2 🎢
+      stars: 16241
+      language: C++
+      license: GPL-3.0
+      pushed_at: '2026-09-20'
+  - repo: github:dolphin-emu/dolphin
+    note: Play GameCube and Wii games with enhancements.
+    snapshot:
+      description: Dolphin is a GameCube / Wii emulator, allowing you to play games for these two platforms on PC
+        with improvements.
+      stars: 15549
+      language: C++
+      license: NOASSERTION
+      pushed_at: '2026-09-20'
+  - repo: github:libretro/RetroArch
+    note: One app for dozens of systems.
+    snapshot:
+      description: Cross-platform, sophisticated frontend for the libretro API. Licensed GPLv3.
+      stars: 14060
+      language: C
+      license: GPL-3.0
+      pushed_at: '2026-09-20'
+  - repo: github:CleverRaven/Cataclysm-DDA
+    note: Enormously deep terminal or tileset roguelike.
+    snapshot:
+      description: Cataclysm - Dark Days Ahead. A turn-based survival game set in a post-apocalyptic world.
+      stars: 13191
+      language: C++
+      license: NOASSERTION
+      pushed_at: '2026-09-20'
+  - repo: github:mamedev/mame
+    note: Preserves thousands of arcade machines.
+    snapshot:
+      description: MAME
+      stars: 10505
+      language: C++
+      license: NOASSERTION
+      pushed_at: '2026-09-20'
+  - repo: github:openframeworks/openFrameworks
+    note: Interactive art and installations.
+    snapshot:
+      description: openFrameworks is a community-developed cross platform toolkit for creative coding in C++.
+      stars: 10428
+      language: C++
+      license: NOASSERTION
+      pushed_at: '2026-09-15'
+  - repo: github:love2d/love
+    note: Make a small game in a single afternoon.
+    snapshot:
+      description: LÖVE is an awesome 2D game framework for Lua.
+      stars: 8763
+      language: C++
+      license: NOASSERTION
+      pushed_at: '2026-09-20'
+  - repo: github:LibreSprite/LibreSprite
+    note: A free pixel art editor.
+    snapshot:
+      description: Animated sprite editor & pixel art tool -- Fork of the last GPLv2 commit of Aseprite
+      stars: 8420
+      language: C++
+      license: GPL-2.0
+      pushed_at: '2026-09-18'
+  - repo: github:OpenTTD/OpenTTD
+    note: A transport-empire sandbox.
+    snapshot:
+      description: OpenTTD is an open source simulation game based upon Transport Tycoon Deluxe
+      stars: 8284
+      language: C++
+      license: NOASSERTION
+      pushed_at: '2026-09-20'
+  - repo: github:mgba-emu/mgba
+    note: Accurate and lightweight GBA emulation.
+    snapshot:
+      description: mGBA Game Boy Advance Emulator
+      stars: 7422
+      language: C
+      license: MPL-2.0
+      pushed_at: '2026-09-19'
+  - repo: github:nannou-org/nannou
+    note: Generative art in Rust.
+    snapshot:
+      description: A Creative Coding Framework for Rust.
+      stars: 6756
+      language: Rust
+      license: ''
+      pushed_at: '2026-07-15'
+  - repo: github:nesbox/TIC-80
+    note: Constraints that make game jams fun.
+    snapshot:
+      description: TIC-80 is a fantasy computer for making, playing and sharing tiny games.
+      stars: 6132
+      language: C
+      license: MIT
+      pushed_at: '2026-09-19'
+  - repo: github:crawl/crawl
+    note: A polished roguelike playable in a terminal.
+    snapshot:
+      description: 'Dungeon Crawl: Stone Soup official repository'
+      stars: 3008
+      language: C++
+      license: NOASSERTION
+      pushed_at: '2026-09-20'
+  - repo: github:scummvm/scummvm
+    note: Run old adventure games on modern hardware.
+    snapshot:
+      description: ScummVM main repository
+      stars: 2813
+      language: C++
+      license: GPL-3.0
+      pushed_at: '2026-09-20'
+  - repo: gitlab:veloren/veloren
+    note: An open-world game you can build and hack on.
+    snapshot:
+      description: 'Veloren is a multiplayer voxel RPG written in Rust. It is inspired by games such as Cube World,
+        Legend of Zelda: Breath of the Wild, Dwarf Fortress and Minecraft.'
+      stars: 2395
+      language: Rust
+      license: ''
+      pushed_at: '2026-09-20'
+  - repo: github:dosbox-staging/dosbox-staging
+    note: Run DOS games with better defaults.
+    snapshot:
+      description: DOSBox Staging is a modern continuation of DOSBox with advanced features and current development
+        practices.
+      stars: 1784
+      language: C++
+      license: NOASSERTION
+      pushed_at: '2026-09-20'
+  - repo: github:fizzyedit/fizzy
+    note: A small, new pixel editor.
+    snapshot:
+      description: Pixel art editor made with Zig
+      stars: 1488
+      language: Zig
+      license: GPL-3.0
+      pushed_at: '2026-09-19'
+  - repo: github:mitchcurtis/slate
+    note: A Qt-based editor for tiles and sprites.
+    snapshot:
+      description: Pixel Art Editor
+      stars: 1148
+      language: C++
+      license: GPL-3.0
+      pushed_at: '2026-07-16'
+  - repo: gitlab:OpenMW/openmw
+    note: Modern engine for a classic RPG.
+    snapshot:
+      description: OpenMW is an open-source open-world RPG game engine that supports playing Morrowind.
+      stars: 936
+      language: C++
+      license: ''
+      pushed_at: '2026-09-20'
+  - repo: github:danterolle/tilf
+    note: Easy to install with pip.
+    snapshot:
+      description: Tilf (Tiny Elf) is a free, simple yet powerful pixel art editor built with PySide6. It’s designed
+        for creating sprites, icons, and small 2D assets with essential drawing tools, live preview, undo/redo,
+        export options and more.
+      stars: 471
+      language: Python
+      license: GPL-3.0
+      pushed_at: '2026-07-30'
+  - repo: gitlab:xonotic/xonotic
+    note: A fast open-source FPS.
+    snapshot:
+      description: Base repo - contains build scripts and tools to manage the other repos (which contain the actual
+        code and assets). [README](#xonotic) | [Wiki](https://gitlab.com/xonotic/xonotic/-/wikis/home) | [Doxygen](https://xonotic.org/doxygen)
+        Report game and menu issues [here](https://gitlab.com/xonotic/xonot
+      stars: 297
+      language: Java
+      license: GNU GPLv3
+      pushed_at: '2026-09-07'
+  - repo: gitlab:es-de/emulationstation-de
+    note: A polished launcher for your ROM library.
+    snapshot:
+      description: ES-DE is a frontend for browsing and launching games from your multi-platform collection.
+      stars: 246
+      language: C++
+      license: ''
+      pushed_at: '2026-09-18'
+  - repo: gitlab:solarus-games/solarus
+    note: Made for Zelda-like adventure games.
+    snapshot:
+      description: Free and open-source 2D game engine, with a game editor and game launcher.
+      stars: 168
+      language: C++
+      license: GNU GPLv3
+      pushed_at: '2026-09-19'
+  - repo: gitlab:SuperTuxParty/SuperTuxParty
+    note: Local multiplayer minigames.
+    snapshot:
+      description: An open-source party game inspired by games such as Mario Party
+      stars: 109
+      language: GDScript
+      license: LICENSE
+      pushed_at: '2026-07-03'
+- name: 'Catalog: Self-Hosted & Home'
+  as_of: '2026-09-20'
+  repos:
+  - repo: github:awesome-selfhosted/awesome-selfhosted
+    note: The best place to discover more projects like these.
+    snapshot:
+      description: A list of Free Software network services and web applications which can be hosted on your own
+        servers
+      stars: 320588
+      language: ''
+      license: NOASSERTION
+      pushed_at: '2026-09-19'
+  - repo: github:louislam/uptime-kuma
+    note: Uptime alerts for your own services.
+    snapshot:
+      description: A fancy self-hosted monitoring tool
+      stars: 91610
+      language: JavaScript
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:home-assistant/core
+    note: The hub for smart-home projects, with thousands of integrations.
+    snapshot:
+      description: ':house_with_garden: Open source home automation that puts local control and privacy first.'
+      stars: 90884
+      language: Python
+      license: Apache-2.0
+      pushed_at: '2026-09-20'
+  - repo: github:syncthing/syncthing
+    note: Sync folders between laptop and phones without a cloud.
+    snapshot:
+      description: Open Source Continuous File Synchronization
+      stars: 88801
+      language: Go
+      license: MPL-2.0
+      pushed_at: '2026-09-15'
+  - repo: github:dani-garcia/vaultwarden
+    note: A lightweight self-hosted password vault.
+    snapshot:
+      description: Unofficial Bitwarden compatible server written in Rust, formerly known as bitwarden_rs
+      stars: 67915
+      language: Rust
+      license: AGPL-3.0
+      pushed_at: '2026-09-18'
+  - repo: github:usememos/memos
+    note: A private, Twitter-like notes timeline.
+    snapshot:
+      description: Open-source, self-hosted note-taking tool built for quick capture. Markdown-native, lightweight,
+        and fully yours.
+      stars: 63192
+      language: Go
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:go-gitea/gitea
+    note: Your own small GitHub.
+    snapshot:
+      description: Git with a cup of tea! Painless self-hosted all-in-one software development service, including
+        Git hosting, code review, team collaboration, package registry and CI/CD
+      stars: 58087
+      language: Go
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:jellyfin/jellyfin
+    note: Your own streaming service for local media.
+    snapshot:
+      description: The Free Software Media System - Server Backend & API
+      stars: 57339
+      language: C#
+      license: GPL-2.0
+      pushed_at: '2026-09-18'
+  - repo: github:siyuan-note/siyuan
+    note: A block-based note system that runs locally.
+    snapshot:
+      description: An open-source, privacy-first, self-hosted knowledge workspace where humans and AI agents work
+        together 开源、隐私优先、自托管的知识工作空间，让人与智能体在此协作
+      stars: 46443
+      language: TypeScript
+      license: AGPL-3.0
+      pushed_at: '2026-09-20'
+  - repo: github:paperless-ngx/paperless-ngx
+    note: Turn a pile of PDFs into a searchable archive.
+    snapshot:
+      description: 'A community-supported supercharged document management system: scan, index and archive all your
+        documents'
+      stars: 45498
+      language: Python
+      license: GPL-3.0
+      pushed_at: '2026-09-20'
+  - repo: github:glanceapp/glance
+    note: One page for RSS, weather, markets and more, in a single Go binary.
+    snapshot:
+      description: A self-hosted dashboard that puts all your feeds in one place
+      stars: 37137
+      language: Go
+      license: AGPL-3.0
+      pushed_at: '2026-09-05'
+  - repo: github:binwiederhier/ntfy
+    note: Notify your phone from a shell script in one line.
+    snapshot:
+      description: Send push notifications to your phone or desktop using PUT/POST
+      stars: 34343
+      language: Go
+      license: Apache-2.0
+      pushed_at: '2026-09-15'
+  - repo: github:gethomepage/homepage
+    note: A launcher for your homelab services.
+    snapshot:
+      description: A highly customizable homepage (or startpage / application dashboard) with Docker and service
+        API integrations.
+      stars: 32772
+      language: JavaScript
+      license: GPL-3.0
+      pushed_at: '2026-09-20'
+  - repo: github:karakeep-app/karakeep
+    note: A private read-later archive.
+    snapshot:
+      description: A self-hostable bookmark-everything app (links, notes and images) with AI-based automatic tagging
+        and full text search
+      stars: 29175
+      language: TypeScript
+      license: AGPL-3.0
+      pushed_at: '2026-09-19'
+  - repo: github:lissy93/dashy
+    note: A highly themeable start page.
+    snapshot:
+      description: 🚀 A self-hostable personal dashboard built for you. Includes status-checking, widgets, themes,
+        icon packs, a UI editor and tons more!
+      stars: 26528
+      language: Vue
+      license: MIT
+      pushed_at: '2026-09-18'
+  - repo: github:navidrome/navidrome
+    note: Stream your music library to any Subsonic-compatible app.
+    snapshot:
+      description: 🎧 Your Personal Streaming Service
+      stars: 23692
+      language: Go
+      license: GPL-3.0
+      pushed_at: '2026-09-20'
+  - repo: github:FreshRSS/FreshRSS
+    note: A long-lived RSS server with many extensions.
+    snapshot:
+      description: A free, self-hostable news aggregator…
+      stars: 16083
+      language: PHP
+      license: AGPL-3.0
+      pushed_at: '2026-09-20'
+  - repo: github:miniflux/v2
+    note: A tiny, fast RSS reader.
+    snapshot:
+      description: Minimalist and opinionated feed reader
+      stars: 9717
+      language: Go
+      license: Apache-2.0
+      pushed_at: '2026-09-16'
+  - repo: gitlab:Remmina/Remmina
+    note: A convenient remote-desktop launcher.
+    snapshot:
+      description: The GTK Remmina Remote Desktop Client
+      stars: 909
+      language: C
+      license: ''
+      pushed_at: '2026-09-20'
+  - repo: gitlab:zehkira/monophony
+    note: A lightweight GTK music front end.
+    snapshot:
+      description: Linux app for streaming music from YouTube Music
+      stars: 124
+      language: Python
+      license: ''
+      pushed_at: '2026-08-23'
+- name: 'Catalog: Developer Tools'
+  as_of: '2026-09-20'
+  repos:
+  - repo: github:astral-sh/uv
+    note: Replaces pip, venv and more.
+    snapshot:
+      description: An extremely fast Python package and project manager, written in Rust.
+      stars: 90015
+      language: Rust
+      license: Apache-2.0
+      pushed_at: '2026-09-20'
+  - repo: github:junegunn/fzf
+    note: Makes history, files and git branches searchable.
+    snapshot:
+      description: ':cherry_blossom: A command-line fuzzy finder'
+      stars: 83153
+      language: Go
+      license: MIT
+      pushed_at: '2026-09-14'
+  - repo: github:BurntSushi/ripgrep
+    note: The fastest everyday grep.
+    snapshot:
+      description: ripgrep recursively searches directories for a regex pattern while respecting your gitignore
+      stars: 68472
+      language: Rust
+      license: Unlicense
+      pushed_at: '2026-08-04'
+  - repo: github:starship/starship
+    note: A one-binary prompt that adapts to the project you are in.
+    snapshot:
+      description: ☄🌌️ The minimal, blazing-fast, and infinitely customizable prompt for any shell!
+      stars: 59964
+      language: Rust
+      license: ISC
+      pushed_at: '2026-09-19'
+  - repo: github:sharkdp/fd
+    note: Sensible defaults for finding files.
+    snapshot:
+      description: A simple, fast and user-friendly alternative to 'find'
+      stars: 44494
+      language: Rust
+      license: Apache-2.0
+      pushed_at: '2026-09-20'
+  - repo: github:casey/just
+    note: A friendlier Makefile for project commands.
+    snapshot:
+      description: 🤖 Just a command runner
+      stars: 35923
+      language: Rust
+      license: CC0-1.0
+      pushed_at: '2026-09-01'
+  - repo: github:jdx/mise
+    note: One tool for language versions and task running.
+    snapshot:
+      description: dev tools, env vars, task runner
+      stars: 34129
+      language: Rust
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:dandavison/delta
+    note: Much more readable git diffs.
+    snapshot:
+      description: A syntax-highlighting pager for git, diff, grep, rg --json, and blame output
+      stars: 32278
+      language: Rust
+      license: MIT
+      pushed_at: '2026-09-19'
+  - repo: github:sharkdp/hyperfine
+    note: Compare how long two commands take, with statistics.
+    snapshot:
+      description: A command-line benchmarking tool
+      stars: 28882
+      language: Rust
+      license: Apache-2.0
+      pushed_at: '2026-04-30'
+  - repo: github:Wilfred/difftastic
+    note: Diffs that ignore formatting noise.
+    snapshot:
+      description: a structural diff that understands syntax 🟥🟩
+      stars: 25918
+      language: Rust
+      license: MIT
+      pushed_at: '2026-09-18'
+  - repo: github:JanDeDobbeleer/oh-my-posh
+    note: A themeable prompt for any shell.
+    snapshot:
+      description: The most customisable and low-latency cross platform/shell prompt renderer
+      stars: 23488
+      language: Go
+      license: MIT
+      pushed_at: '2026-09-18'
+  - repo: github:ast-grep/ast-grep
+    note: Refactor code by syntax tree patterns instead of regexes.
+    snapshot:
+      description: ⚡A CLI tool for code structural search, lint and rewriting. Written in Rust
+      stars: 15974
+      language: Rust
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:direnv/direnv
+    note: Per-project environments without thinking.
+    snapshot:
+      description: unclutter your .profile
+      stars: 15456
+      language: Go
+      license: MIT
+      pushed_at: '2026-03-31'
+  - repo: github:simonw/llm
+    note: Pipe text into local or hosted models.
+    snapshot:
+      description: Access large language models from the command-line
+      stars: 12533
+      language: Python
+      license: Apache-2.0
+      pushed_at: '2026-09-19'
+  - repo: github:yadm-dev/yadm
+    note: Manage dotfiles using git directly.
+    snapshot:
+      description: Yet Another Dotfiles Manager
+      stars: 6426
+      language: Python
+      license: GPL-3.0
+      pushed_at: '2026-04-13'
+  - repo: github:Gaurav-Gosain/tuios
+    note: A tiling-window-manager feel inside the terminal.
+    snapshot:
+      description: Terminal UI OS (Terminal Multiplexer)
+      stars: 3696
+      language: Go
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:SuperCuber/dotter
+    note: Template your dotfiles per machine.
+    snapshot:
+      description: A dotfile manager and templater written in rust 🦀
+      stars: 2012
+      language: Rust
+      license: Unlicense
+      pushed_at: '2026-07-13'
+  - repo: github:aaronjanse/3mux
+    note: Tiling panes with i3-like keys.
+    snapshot:
+      description: Terminal multiplexer inspired by i3
+      stars: 1850
+      language: Go
+      license: MIT
+      pushed_at: '2026-07-06'
+  - repo: gitlab:gitlab-org/cli
+    note: The GitLab equivalent of the gh CLI.
+    snapshot:
+      description: A GitLab CLI tool bringing GitLab to your command line
+      stars: 1094
+      language: Go
+      license: ''
+      pushed_at: '2026-09-20'
+  - repo: github:boyter/cs
+    note: Search a codebase smartly from the terminal.
+    snapshot:
+      description: codespelunker - CLI code search tool that understands code structure and ranks results by relevance.
+        No indexing required with CLI, TUI, MCP and HTTP support.
+      stars: 1074
+      language: Go
+      license: MIT
+      pushed_at: '2026-09-11'
+- name: 'Catalog: Hardware, Radio & Phones'
+  as_of: '2026-09-20'
+  repos:
+  - repo: github:Genymobile/scrcpy
+    note: 'Mirror and control your Pixels or Galaxy over USB or Wi-Fi. Needs: Android phone with USB debugging (you
+      have these).'
+    snapshot:
+      description: Display and control your Android device
+      stars: 150076
+      language: C
+      license: Apache-2.0
+      pushed_at: '2026-09-19'
+  - repo: github:ruvnet/RuView
+    note: 'Sensing people through Wi-Fi radio reflections. Needs: ESP32-S3 boards (about $9 each) for real sensing.'
+    snapshot:
+      description: π RuView turns commodity WiFi signals into real-time spatial intelligence, vital sign monitoring,
+        and presence detection — all without a single pixel of video.
+      stars: 94567
+      language: Rust
+      license: MIT
+      pushed_at: '2026-09-20'
+  - repo: github:termux/termux-app
+    note: 'A Linux shell on your phone. Needs: Android phone (you have these).'
+    snapshot:
+      description: Termux - a terminal emulator application for Android OS extendible by variety of packages.
+      stars: 61131
+      language: Java
+      license: NOASSERTION
+      pushed_at: '2026-09-16'
+  - repo: github:arendst/Tasmota
+    note: 'Free smart plugs from the cloud. Needs: ESP-based device.'
+    snapshot:
+      description: Alternative firmware for ESP8266 and ESP32 based devices with easy configuration using webUI,
+        OTA updates, automation using timers or rules, expandability and entirely local control over MQTT, HTTP,
+        Serial or KNX. Full documentation at
+      stars: 24769
+      language: C
+      license: GPL-3.0
+      pushed_at: '2026-09-20'
+  - repo: github:DarkFlippers/unleashed-firmware
+    note: 'Extra features for the Flipper Zero. Needs: Flipper Zero.'
+    snapshot:
+      description: Flipper Zero Unleashed Firmware
+      stars: 22309
+      language: C
+      license: GPL-3.0
+      pushed_at: '2026-09-20'
+  - repo: github:justcallmekoko/ESP32Marauder
+    note: 'Learn how Wi-Fi works by observing your own networks. Needs: ESP32 board.'
+    snapshot:
+      description: A suite of WiFi/Bluetooth offensive and defensive tools for the ESP32
+      stars: 12411
+      language: C++
+      license: ''
+      pushed_at: '2026-09-17'
+  - repo: github:waydroid/waydroid
+    note: Run Android apps on your laptop.
+    snapshot:
+      description: Waydroid uses a container-based approach to boot a full Android system on a regular GNU/Linux
+        system like Ubuntu.
+      stars: 12230
+      language: Python
+      license: GPL-3.0
+      pushed_at: '2026-09-06'
+  - repo: github:esphome/esphome
+    note: 'Build sensors with YAML instead of firmware code. Needs: ESP32 or similar board.'
+    snapshot:
+      description: ESPHome is a system to control your ESP32, ESP8266, BK72xx, RP2040 by simple yet powerful configuration
+        files and control them remotely through Home Automation systems.
+      stars: 11712
+      language: C++
+      license: NOASSERTION
+      pushed_at: '2026-09-20'
+  - repo: github:platformio/platformio-core
+    note: 'One toolchain for many microcontroller boards. Needs: Optional (needed to flash boards).'
+    snapshot:
+      description: 'Your Gateway to Embedded Software Development Excellence :alien:'
+      stars: 9472
+      language: Python
+      license: Apache-2.0
+      pushed_at: '2026-09-19'
+  - repo: github:meshtastic/firmware
+    note: 'Text your friends over LoRa with no cell service. Needs: LoRa board (ESP32 or nRF52).'
+    snapshot:
+      description: The official firmware for Meshtastic, an open-source, off-grid mesh communication system.
+      stars: 8318
+      language: C++
+      license: GPL-3.0
+      pushed_at: '2026-09-20'
+  - repo: github:AlexandreRouma/SDRPlusPlus
+    note: 'A modern SDR receiver app. Needs: RTL-SDR or similar.'
+    snapshot:
+      description: Cross-Platform SDR Software
+      stars: 6354
+      language: C++
+      license: GPL-3.0
+      pushed_at: '2026-07-05'
+  - repo: github:gqrx-sdr/gqrx
+    note: 'Tune the radio spectrum from your desktop. Needs: RTL-SDR or similar.'
+    snapshot:
+      description: Software defined radio receiver powered by GNU Radio and Qt.
+      stars: 3685
+      language: C++
+      license: GPL-3.0
+      pushed_at: '2026-08-06'
+  - repo: gitlab:CalcProgrammer1/OpenRGB
+    note: 'Control keyboard and case lighting from one app. Needs: RGB-capable hardware.'
+    snapshot:
+      description: Open source RGB lighting control that doesn't depend on manufacturer software. For Windows, Linux,
+        MacOS. Supports a wide variety of RGB components, peripherals, accessories, and lights across many manufacturers.
+        See the README or https://openrgb.org for more information.
+      stars: 3483
+      language: C++
+      license: ''
+      pushed_at: '2026-09-20'
+  - repo: github:mvp/uhubctl
+    note: 'Power-cycle a USB device from software. Needs: USB hub with per-port power switching.'
+    snapshot:
+      description: uhubctl - USB hub per-port power control
+      stars: 2803
+      language: C
+      license: NOASSERTION
+      pushed_at: '2026-07-25'
+  - repo: gitlab:fdroid/fdroidclient
+    note: 'A store of free apps for your phone. Needs: Android phone.'
+    snapshot:
+      description: Android client application
+      stars: 2657
+      language: Kotlin
+      license: GNU GPLv3
+      pushed_at: '2026-09-20'
+  - repo: gitlab:AuroraOSS/AuroraStore
+    note: 'Install Play apps without Google''s client. Needs: Android phone.'
+    snapshot:
+      description: An unofficial FOSS client to Google Play.
+      stars: 2257
+      language: Kotlin
+      license: ''
+      pushed_at: '2026-09-20'
+  - repo: gitlab:coolercontrol/coolercontrol
+    note: 'Fan curves and monitoring for PC cooling gear. Needs: Supported cooling hardware.'
+    snapshot:
+      description: Cooling device control for Linux.
+      stars: 571
+      language: Rust
+      license: ''
+      pushed_at: '2026-09-20'
+  - repo: gitlab:painlessMesh/painlessMesh
+    note: 'Self-organising Wi-Fi mesh for tiny devices. Needs: ESP32 or ESP8266 boards.'
+    snapshot:
+      description: painlessMesh is a user-friendly library for creating mesh networks with ESP8266 and ESP32 devices.
+        It handles routing and network management automatically, so you can focus on your application. The library
+        uses JSON-based messaging and syncs time across all nodes, making it ideal for coordinated beh
+      stars: 271
+      language: C++
+      license: GNU GPLv3
+      pushed_at: '2026-06-14'
+  - repo: gitlab:cutecom/cutecom
+    note: 'Talk to microcontrollers over serial. Needs: A serial device.'
+    snapshot:
+      description: A graphical serial terminal
+      stars: 66
+      language: C++
+      license: GNU GPLv3
+      pushed_at: '2026-09-10'
+  - repo: github:MAXXTANG/ruview-xiao
+    note: 'A small standalone RuView node. Needs: Seeed XIAO ESP32 board and OLED.'
+    snapshot:
+      description: RuView WiFi-CSI human sensing on Seeed XIAO ESP32-S3/C6/C5 + SSD1306 OLED — additions & C5 port
+        fixes over ruvnet/RuView (MIT)
+      stars: 6
+      language: C
+      license: MIT
+      pushed_at: '2026-07-03'
