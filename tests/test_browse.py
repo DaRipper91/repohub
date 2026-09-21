@@ -76,7 +76,7 @@ def test_entry_string_and_mapping_and_snapshot():
 @pytest.mark.parametrize("entry,msg", [
     ("bitbucket:a/b", r"shelf 'X' entry #0: unknown host 'bitbucket'"),
     ("github:../x", r"entry #0: invalid slug"),
-    ({"repo": "github:o/r\n"}, r"entry #0: invalid slug"),
+    ({"repo": "github:o/r\nx"}, r"entry #0: invalid slug"),
     ("github:", r"entry #0: invalid slug"),
     ("github:a/b/c", r"entry #0: invalid slug"),
     ("nocolon", r"entry #0: .*host:owner/name"),
@@ -226,3 +226,120 @@ def test_deeply_nested_yaml_is_a_problem_not_a_crash(tmp_path):
     p.write_text("[" * 100_000)
     r = load_all_shelves(personal_path=p)
     assert len(r.problems) == 1
+
+
+# ---- Task 7 review fixes ----
+import datetime as _dt
+import os
+import threading
+
+
+def test_unquoted_dates_equal_quoted_forms():
+    a = parse_shelves(yaml_load("- name: A\n  as_of: 2026-09-20\n  repos:\n"
+                                "    - repo: github:a/b\n      snapshot: {pushed_at: 2026-09-20}\n"))[0]
+    b = parse_shelves(yaml_load("- name: A\n  as_of: '2026-09-20'\n  repos:\n"
+                                "    - repo: github:a/b\n      snapshot: {pushed_at: '2026-09-20'}\n"))[0]
+    assert a == b and a.as_of == "2026-09-20"
+    assert a.repos[0].snapshot.pushed_at == "2026-09-20"
+
+
+def yaml_load(text):
+    import yaml
+    return yaml.safe_load(text)
+
+
+def test_datetime_keeps_full_iso_string():
+    s = parse_shelves([{"name": "A", "as_of": _dt.datetime(2026, 9, 20, 1, 2, 3)}])[0]
+    assert s.as_of == "2026-09-20T01:02:03"
+
+
+def test_unquoted_date_in_personal_file_loads(tmp_path):
+    p = tmp_path / "m.yaml"
+    p.write_text("- name: Mine\n  as_of: 2026-09-20\n  repos: [github:a/b]\n")
+    r = load_all_shelves(personal_path=p)
+    assert r.problems == [] and r.shelves[-1].as_of == "2026-09-20"
+
+
+def test_number_for_as_of_gives_quote_hint():
+    with pytest.raises(ValueError, match=r"as_of must be a string \(quote it, e\.g\. '2026-09-20'\)"):
+        parse_shelves([{"name": "A", "as_of": 20260920}])
+
+
+def test_date_for_other_string_field_is_error_with_hint():
+    with pytest.raises(ValueError, match=r"topic must be a string \(quote it"):
+        parse_shelves([{"name": "A", "topic": _dt.date(2026, 1, 1)}])
+    with pytest.raises(ValueError, match=r"snapshot: 'description' must be a string \(quote it"):
+        _one([{"repo": "github:a/b", "snapshot": {"description": _dt.date(2026, 1, 1)}}])
+
+
+def test_non_regular_personal_paths_are_problems(tmp_path):
+    fifo = tmp_path / "fifo.yaml"
+    os.mkfifo(fifo)
+    out = {}
+
+    def run():
+        out["r"] = load_all_shelves(personal_path=fifo)
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    t.join(timeout=5)
+    assert not t.is_alive(), "loader hung on a FIFO"
+    assert out["r"].problems == [f"personal shelves ({fifo}): not a regular file"]
+    d = load_all_shelves(personal_path=tmp_path)
+    assert d.problems == [f"personal shelves ({tmp_path}): not a regular file"]
+
+
+def test_symlink_to_regular_file_is_fine(tmp_path):
+    real = tmp_path / "real.yaml"
+    real.write_text("- name: Mine\n  topic: x\n")
+    link = tmp_path / "link.yaml"
+    link.symlink_to(real)
+    r = load_all_shelves(personal_path=link)
+    assert r.problems == [] and r.shelves[-1].name == "Mine"
+
+
+def test_explicit_load_shelves_rejects_fifo(tmp_path):
+    fifo = tmp_path / "f.yaml"
+    os.mkfifo(fifo)
+    with pytest.raises(ValueError, match="not a regular file"):
+        load_shelves(fifo)
+
+
+@pytest.mark.parametrize("bad", [0, False, 5, ["x"]])
+def test_non_string_note_is_error(bad):
+    with pytest.raises(ValueError, match=r"entry #0: 'note' must be a string"):
+        _one([{"repo": "github:a/b", "note": bad}])
+
+
+def test_none_note_is_empty():
+    assert _one([{"repo": "github:a/b", "note": None}]).repos[0].note == ""
+
+
+def test_curated_shelf_keeps_search_fields_but_is_curated():
+    # Decision: search fields are accepted and kept as given; callers branch on `curated`.
+    s = _one(["github:a/b"], topic="tui", min_stars=7)
+    assert s.curated
+    assert (s.topic, s.min_stars) == ("tui", 7)
+    assert s.repos and s.filters().topic == "tui"
+
+
+def test_entry_whitespace_is_stripped():
+    s = _one([" github:o/r", "github:o/r2 ", {"repo": "  github:o/r3\t"}])
+    assert [e.slug for e in s.repos] == ["o/r", "o/r2", "o/r3"]
+
+
+def test_slug_length_cap():
+    ok = "g/" + "a" * 198
+    assert _one([f"gitlab:{ok}"]).repos[0].slug == ok
+    with pytest.raises(ValueError, match=r"entry #0: slug too long"):
+        _one(["gitlab:g/" + "a" * 199])
+
+
+def test_problem_path_is_cleaned_and_capped(tmp_path):
+    p = tmp_path / "bad\x1b[31mname.yaml"
+    p.write_text("name: x\n")
+    msg = load_all_shelves(personal_path=p).problems[0]
+    assert "\x1b" not in msg
+    assert len(browse._problem_text(Path("/" + "d" * 500), "boom")) < 200 + 60 + 40
+
+
+from pathlib import Path  # noqa: E402

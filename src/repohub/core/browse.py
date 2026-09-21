@@ -6,6 +6,9 @@ limit; all problems surface as ``ValueError`` naming the shelf and entry.
 """
 from __future__ import annotations
 
+import datetime as _dt
+import os
+import stat
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
@@ -26,6 +29,9 @@ MAX_SHELVES = 200
 MAX_PERSONAL_BYTES = 1_000_000
 MAX_PACKAGED_BYTES = 5_000_000
 _NAME_LEN = 80
+MAX_SLUG = 200
+MAX_PATH_SHOWN = 200
+_DATE_FIELDS = ("as_of", "pushed_at")
 
 
 @dataclass(frozen=True)
@@ -65,6 +71,8 @@ class Shelf:
         return bool(self.repos)
 
     def filters(self) -> SearchFilters:
+        """Search filters for a search shelf. For a curated shelf (``curated`` is True) the
+        search fields are accepted and kept but unused: callers must branch on ``curated``."""
         return SearchFilters(language=self.language, min_stars=self.min_stars,
                              updated_within_days=self.days, topic=self.topic)
 
@@ -97,6 +105,16 @@ def _text(v: object, cap: int) -> str:
     return clean_text(v)[:cap]
 
 
+def _str_field(label: str, v: object, cap: int, dates: bool = False) -> str:
+    """A string-typed YAML field. Only date fields accept unquoted YAML dates."""
+    if dates and isinstance(v, (_dt.date, _dt.datetime)):  # datetime is a date subclass
+        return _text(v.isoformat(), cap)
+    if not isinstance(v, str):
+        hint = " (quote it, e.g. '2026-09-20')" if dates else " (quote it)"
+        raise ValueError(f"{label} must be a string{hint}")
+    return _text(v, cap)
+
+
 def _parse_snapshot(raw: object) -> Snapshot | None:
     if raw is None:
         return None
@@ -114,9 +132,7 @@ def _parse_snapshot(raw: object) -> Snapshot | None:
                 raise ValueError(f"snapshot: 'stars' must be between 0 and {MAX_STARS}")
             vals[k] = v
         else:
-            if not isinstance(v, str):
-                raise ValueError(f"snapshot: {k!r} must be a string")
-            vals[k] = _text(v, MAX_DESC)
+            vals[k] = _str_field(f"snapshot: {k!r}", v, MAX_DESC, dates=k in _DATE_FIELDS)
     return Snapshot(**vals)
 
 
@@ -134,18 +150,23 @@ def _parse_entry(raw: object) -> ShelfEntry:
         repo = raw["repo"]
         if not isinstance(repo, str):
             raise ValueError("'repo' must be a string")
-        note = raw.get("note") or ""
-        if not isinstance(note, str):
+        note = raw.get("note")
+        if note is None:
+            note = ""
+        elif not isinstance(note, str):
             raise ValueError("'note' must be a string")
         snap_raw = raw.get("snapshot")
     else:
         raise ValueError(f"expected a string or mapping, got {type(raw).__name__}")
+    repo = repo.strip()
     host, sep, slug = repo.partition(":")
     if not sep:
         raise ValueError(f"{_show(repo)} must look like host:owner/name")
     host = host.strip().lower()
     if host not in HOSTS:
         raise ValueError(f"unknown host {_show(host)}")
+    if len(slug) > MAX_SLUG:
+        raise ValueError(f"slug too long (over {MAX_SLUG} characters)")
     if not valid_slug(slug, host):
         raise ValueError(f"invalid slug {_show(slug)} for host {host}")
     return ShelfEntry(host, slug, _text(note, MAX_NOTE), _parse_snapshot(snap_raw))
@@ -188,9 +209,10 @@ def _parse_shelf(i: int, item: object) -> Shelf:
         v = item.get(k)
         if v is None:
             continue
-        if not isinstance(v, str):
-            raise ValueError(f"{bad}: {k} must be a string")
-        kw[k] = _text(v, MAX_DESC)
+        try:
+            kw[k] = _str_field(k, v, MAX_DESC, dates=k in _DATE_FIELDS)
+        except ValueError as e:
+            raise ValueError(f"{bad}: {e}") from e
     for k in ("min_stars", "days"):
         if k in item:
             v = item[k]
@@ -222,6 +244,9 @@ def _safe_load(text: str) -> object:
 
 
 def _read_file(path: Path, limit: int) -> str:
+    # Stat first: open() on a FIFO would block forever. stat follows symlinks.
+    if not stat.S_ISREG(os.stat(path).st_mode):
+        raise ValueError("not a regular file")
     with open(path, "rb") as fh:
         raw = fh.read(limit + 1)
     if len(raw) > limit:
@@ -250,6 +275,10 @@ def load_shelves(path: Path | str | None = None) -> list[Shelf]:
     return parse_shelves(_safe_load(text))
 
 
+def _problem_text(path: Path, err: object) -> str:
+    return f"personal shelves ({clean_text(str(path))[:MAX_PATH_SHOWN]}): {clean_text(str(err))[:300]}"
+
+
 def load_all_shelves(personal_path: Path | str | None = None) -> LoadedShelves:
     result = LoadedShelves()
     for name in ("shelves.yaml", "catalog_shelves.yaml"):
@@ -266,7 +295,7 @@ def load_all_shelves(personal_path: Path | str | None = None) -> LoadedShelves:
         shelves = parse_shelves(_safe_load(_read_file(path, MAX_PERSONAL_BYTES)),
                                 source="personal shelves")
     except Exception as e:  # a personal file must never break start-up
-        result.problems.append(f"personal shelves ({path}): {clean_text(str(e))[:300]}")
+        result.problems.append(_problem_text(path, e))
         return result
     result.shelves.extend(shelves)
     return result
