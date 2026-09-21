@@ -118,7 +118,9 @@ Open a repository to read its README and release info. Press `f` to favorite it 
 Search across all hosts with filters, then open any repo for a store-style page.
 
 <p align="center">
-  <img src="docs/assets/web-search.png" alt="Web app: search results for 'terminal ui'" width="92%">
+  <img src="docs/assets/web-search.png" alt="Web app: search results for 'wayland terminal' from GitHub and Codeberg, each with its host badge" width="92%">
+  <br>
+  <sub>One search across every host: GitHub results and Codeberg's <code>dnkl/foot</code> (blue badge) ranked together. Captured 2026-09-21 with live data.</sub>
 </p>
 
 <p align="center">
@@ -142,6 +144,12 @@ RepoHub searches every configured host at once. Three are built in:
 | `github` | GitHub (`github.com`) | GitHub |
 | `gitlab` | GitLab (`gitlab.com`) | GitLab |
 | `codeberg` | Codeberg (`codeberg.org`) | Forgejo |
+
+<p align="center">
+  <img src="docs/assets/web-codeberg.png" alt="Web app: repository page for dnkl/foot on Codeberg with README, topics and the latest release" width="92%">
+  <br>
+  <sub>A Codeberg repository page: README, topics and the latest release. Captured 2026-09-21 with live data. (Forgejo does not expose a license, so it shows as "no license".)</sub>
+</p>
 
 ### More Forgejo and Gitea servers
 
