@@ -29,7 +29,7 @@ After Phase 1 (v0.2.0) the owner asked to work next on the README's "Not include
 | 6. Machine awareness | "Already cloned" badges (scan the clone folder only), "Can I run this here?" panel, project detector | Done (v0.7.0; checklist plus one-line verdict) |
 | 7. Guided install and run | Approve each command; runs the repository's own code | Done (v0.9.0) |
 | 8. Favorites 2.0 | Tags, notes, collections, new-releases tab | Done (v0.10.0) |
-| 9. Claude Code | Read-only MCP server, "Open in Claude Code", `/repohub` skill | Planned |
+| 9. Claude Code | Read-only MCP server, "Open in Claude Code", `/repohub` skill | Done (v0.11.0) |
 | 10. UI redesign | Look of the web and terminal apps | Planned, last |
 
 Phase 6 decision already made: the clone scan looks only at the clone folder (`REPOHUB_CLONE_DIR`, default `~/playground`) and reads each subfolder's `.git/config` for its origin URL.

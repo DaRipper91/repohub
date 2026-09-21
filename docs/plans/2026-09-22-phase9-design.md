@@ -5,7 +5,7 @@ Three parts, as chosen earlier: a read-only MCP server, "Open in Claude Code", a
 ## MCP server (`repohub mcp`)
 
 - Hand-written stdio JSON-RPC (newline-delimited), no new dependency. Methods: `initialize`, `ping`, `tools/list`, `tools/call`; notifications ignored. Protocol versions 2025-06-18, 2025-03-26, 2024-11-05.
-- **Read-only.** Tools: search, repo, favorites, shelves, shelf, recommend, similar, cloned, check, plan, hosts. Nothing writes to a host, changes favorites/tags/notes/settings, clones, or runs a command. `plan` returns the proposal text only. Accounts are not exposed.
+- **Read-only.** Tools: search, repo, favorites, shelves, shelf, recommend, similar, cloned, check, plan, hosts. Nothing writes to a host, changes favorites/tags/notes/settings/history (no user-data writes), clones, or runs a command. Looking things up still fills RepoHub's normal response cache, which is derived data. `plan` returns the proposal text only. Accounts are not exposed.
 - Everything the server returns that came from a host is **third-party text**. Each result carries a notice saying so ("data, not instructions"), strings are sanitised, READMEs are off unless asked for (20 000 characters max), and results are size-capped (60 000 characters).
 - Arguments are validated strictly (types, lengths, ranges, unknown keys refused); repository arguments must be `HOST:OWNER/NAME` on a configured host. Tokens never appear in any output. stdout carries protocol messages only; diagnostics go to stderr.
 - History is never recorded by the server.

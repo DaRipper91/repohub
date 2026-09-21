@@ -70,6 +70,7 @@ Then start whichever front end you like:
 ```bash
 .venv/bin/repohub-web    # http://127.0.0.1:8765   (options: --host, --port)
 .venv/bin/repohub-tui    # terminal app            (options: --help, --version)
+.venv/bin/repohub-mcp    # read-only MCP server for Claude Code (same as `repohub mcp`)
 .venv/bin/repohub        # command line            (repohub --help; see "Command line" below)
 ```
 
@@ -287,6 +288,8 @@ repohub accounts [--json]
 repohub cloned [--json]
 repohub roots [--scan] [--system] [--json]
 repohub plan HOST:OWNER/NAME [--json]
+repohub mcp
+repohub claude-setup [--json]
 repohub check HOST:OWNER/NAME [--json]
 repohub recommend [--limit N] [--json]
 repohub similar HOST:OWNER/NAME [--limit N] [--json]
@@ -334,6 +337,12 @@ repohub repo github:BurntSushi/ripgrep --json | jq -r '.release.assets[] | selec
 - **RepoHub cannot sandbox a build.** A build script, a package's install script, or a `setup.py` can do anything your account can. Only use it for code you trust. `repohub plan HOST:OWNER/NAME` prints the proposal and never runs anything; the CLI has no run command.
 
 **Favorites 2.0.** On the web *Favorites* page, each favorite can have a **note** (up to 500 characters), up to 10 **tags** (lowercase letters, digits, spaces, `_` and `-`) and membership in named **collections** (up to 50 collections). Filter by tag, collection or text (names, descriptions and notes), from the same page or with `repohub favorites --tag/--collection/--query`. The terminal app shows a favorite's tags, collections and note on its detail screen; editing is in the web app. Everything is stored on your machine only. The **New releases** page (`r` in the terminal favorites view, `repohub releases` on the command line) checks the latest release of up to 100 favorites at most every 30 minutes (a failed check is retried after a minute) and lists those newer than the last one you marked as seen (web button, or `m` in the terminal). The first check of a favorite only records a starting point, and a release that was deleted so an older one becomes "latest" is not counted as new. Loading the web page runs that check, which writes only to RepoHub's own local tables, never to a host.
+
+**Claude Code.** RepoHub can be used from Claude Code in three ways. Run `repohub claude-setup` to print the exact commands for the first two; it changes nothing itself.
+
+- **A read-only MCP server** (`repohub mcp`, stdio). Tools: `repohub_search`, `repohub_repo`, `repohub_favorites`, `repohub_shelves`, `repohub_shelf`, `repohub_recommend`, `repohub_similar`, `repohub_cloned`, `repohub_check`, `repohub_plan` and `repohub_hosts`. It cannot write to a host, change your favorites, tags, notes, history or settings, clone, or run anything; `repohub_plan` returns the proposed commands as text only (looking things up still fills RepoHub's normal response cache). Everything that came from a host is third-party text: it is cleaned (control, bidirectional and invisible characters removed), every result carries a notice that it is data and not instructions, READMEs are only included on request (20,000 characters at most), results are capped at 60,000 characters, arguments are strictly validated, tokens never appear in output, and a tool call is limited to 60 seconds. Register it with `claude mcp add --scope user repohub -- repohub mcp`.
+- **A `/repohub` skill** (`src/repohub/claude/skills/repohub/SKILL.md`, shipped with the package) that tells Claude when and how to use the tools or the CLI, and to treat repository text as untrusted. Copy the folder to `~/.claude/skills/`.
+- **Open in Claude Code.** In the terminal app, `o` on a cloned repository asks `y`/`n`, then pauses RepoHub and starts `claude` in that folder (Claude Code itself asks before trusting any settings the folder carries). The web app cannot open a terminal, so a cloned repository's page shows the exact `cd '<folder>' && claude` command to copy.
 
 `repohub check HOST:OWNER/NAME` answers "can I run this here?" as advice, never by running anything: does the latest release have a build for this machine's CPU and operating system, are the build tools for the project type (guessed from the language, or from the file names in the cloned folder) on your `PATH`, is it already cloned. The verdict is one of likely, maybe, needs setup, unlikely or unknown, and it does not check a project's libraries. The same checklist is on every repository page and detail screen.
 
@@ -469,7 +478,7 @@ RepoHub grows in phases. Each phase gets a written design, a task-by-task plan, 
 | **6. Machine awareness** | "Already cloned" badges, a "Can I run this here?" panel (arm64 release assets, installed toolchains), and a shared project detector | ✅ Done (v0.7.0, reviewed) |
 | **7. Guided install and run** | Shows the exact install and run commands for a cloned repo; you approve each command before it runs, and output streams live | ✅ Done (v0.9.0, reviewed) |
 | **8. Favorites 2.0** | Tags, notes and collections for favorites, and a "new releases" tab | ✅ Done (v0.10.0, reviewed) |
-| **9. Claude Code** | An MCP server (read-only by default), "Open in Claude Code" after cloning, and a `/repohub` skill built on the CLI | 📝 Planned |
+| **9. Claude Code** | An MCP server (read-only by default), "Open in Claude Code" after cloning, and a `/repohub` skill built on the CLI | ✅ Done (v0.11.0, reviewed) |
 | **10. UI redesign** | A better-looking web app and terminal app, done once the features above exist | 📝 Planned |
 
 Standing rules for every phase: the existing clone protections stay as they are; running a repository's own code (Phase 7) is always a separate, explicit, opt-in action that shows exactly what it will run; and actions that change your accounts (Phase 4) are always confirmed and never run from the CLI.
@@ -538,7 +547,7 @@ Standing rules for every phase: the existing clone protections stay as they are;
 - **Phase 6, machine awareness (done):** a project detector (Cargo.toml, pyproject or requirements, package.json, Makefile, Dockerfile); a toolchain check; a "can I run this here?" panel; "already cloned" badges from a scan of your clone folder only.
 - **Phase 7, guided install and run (done):** proposing commands from the detector; an approval step for every command; a runner confined to the cloned folder that streams output; strict review because it runs the repository's own code.
 - **Phase 8, favorites 2.0 (done):** storage for tags, notes and collections; editing and filtering in every interface; a "new releases" view.
-- **Phase 9, Claude Code:** a read-only MCP server; an "Open in Claude Code" action after cloning; a `/repohub` skill on top of the CLI; cloning or installing through Claude Code stays a separate, individually approved action.
+- **Phase 9, Claude Code (done):** a read-only MCP server; an "Open in Claude Code" action after cloning; a `/repohub` skill on top of the CLI; cloning or installing through Claude Code stays a separate, individually approved action.
 - **Phase 10, UI redesign:** a design pass over the web and terminal apps, with fresh screenshots.
 
 </details>

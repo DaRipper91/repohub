@@ -223,6 +223,13 @@ class DetailScreen(Screen):
             self.notify("Clone this repository first (c), or add its folder on the Folders view (F5)", markup=False)
             return
         exe = shutil.which("claude")
+        if exe is not None:  # never a relative PATH hit or a program shipped inside the repository
+            import os
+
+            real = os.path.realpath(exe)
+            root = os.path.realpath(clone.path)
+            if not os.path.isabs(exe) or real == root or real.startswith(root + os.sep):
+                exe = None
         if exe is None:
             self.notify(f"Claude Code was not found on PATH. In a terminal: cd {shlex.quote(clone.path)} && claude", markup=False)
             return
@@ -243,7 +250,8 @@ class DetailScreen(Screen):
                 self.notify(f"Could not start Claude Code: {e}", severity="error", markup=False)
 
         self.app.push_screen(ConfirmWrite(
-            f"Open Claude Code in this folder?\n{clone.path}\nRepoHub pauses until you leave Claude Code.", ), done)
+            f"Open Claude Code in this folder?\n{clone.path}\nRepoHub pauses until you leave Claude Code.\n"
+            "The folder may carry its own Claude settings (.claude/, .mcp.json): Claude Code asks before trusting them.",), done)
 
     def action_install(self) -> None:
         runner = getattr(self.app, "runner", None)
