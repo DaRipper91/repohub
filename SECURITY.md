@@ -13,6 +13,9 @@ Helpful details: what you did, what you expected, what happened, the RepoHub ver
 - Script or markup injection through repository data in the web app or the terminal app.
 - Bypassing the session-token, Host-header or Content-Security-Policy protections of the web app.
 - Anything that makes `clone` run outside the chosen folder, contact a host other than `github.com` or `gitlab.com`, run install or build steps, or delete files it did not create.
+- The search-query parser (`lang:`, `stars:` and the other tokens) in the web app, the terminal app and the CLI: injection through echoed problem messages, and resource use on hostile input.
+- The personal shelves file (`shelves.yaml`) and the rendering of curated notes and snapshots: parsing, size limits, unsafe file types, and markup or control characters in text.
+- The CLI's JSON and text output: control and bidirectional characters, JSON escaping, and anything that could print secrets.
 - Leaking API tokens (logs, error pages, cache, outgoing requests to the wrong host).
 
 ## Design notes

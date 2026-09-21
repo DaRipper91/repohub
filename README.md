@@ -32,7 +32,7 @@
 <p align="center">
   <img src="docs/assets/web-home.png" alt="RepoHub web app: shelves of popular repositories" width="92%">
   <br>
-  <sub>The web app's home page: browse shelves, or search both hosts at once. (Screenshot taken 2026-09-20 with live data.)</sub>
+  <sub>The web app's home page: browse shelves, or search both hosts at once. (Captured 2026-09-21 with live data.)</sub>
 </p>
 
 ---
@@ -84,6 +84,14 @@ Keyboard-first, with everything the web app does. Type a query and press Enter, 
   <img src="docs/assets/tui-search.svg" alt="Terminal app: search results for 'terminal ui'" width="92%">
 </p>
 
+Curated shelves page 25 entries at a time with `[` and `]`:
+
+<p align="center">
+  <img src="docs/assets/tui-catalog.svg" alt="Terminal app: a Catalog shelf in the terminal with the paging hint in the status line" width="92%">
+  <br>
+  <sub>A catalog shelf in the terminal app. Captured 2026-09-21 with live data.</sub>
+</p>
+
 Open a repository to read its README and release info. Press `f` to favorite it or `c` to clone it.
 
 <p align="center">
@@ -106,6 +114,12 @@ Search across both hosts with filters, then open any repo for a store-style page
 
 <p align="center">
   <img src="docs/assets/web-search.png" alt="Web app: search results for 'terminal ui'" width="92%">
+</p>
+
+<p align="center">
+  <img src="docs/assets/web-shelf.png" alt="Web app: a Catalog shelf page with the curator's notes and live stats" width="92%">
+  <br>
+  <sub>A catalog shelf page. Captured 2026-09-21 with live data (as were the screenshots above and below; <code>web-repo.png</code> was refreshed too).</sub>
 </p>
 
 <p align="center">
@@ -145,7 +159,7 @@ A shelf is a named group of repositories on the home page. There are two kinds:
 - **Search shelves** run a search (optional `topic`, `language`, `min_stars`, `days`). Six are packaged: Terminal tools, Local AI, Retro and emulation, Self-hosted, Creative coding and Networking.
 - **Curated shelves** list exact repositories. Eight packaged `Catalog: ...` shelves hold 171 curated repositories with the curator's one-line note for each, and stats snapshotted on 2026-09-20.
 
-Home-page tiles for curated shelves show the stored snapshots only (no API calls). Opening a shelf refreshes the entries you can see live: 12 per page in the web app, 25 per page in the terminal app (page with `[` and `]`). If refreshing an entry fails, its snapshot is kept and marked "as of" its snapshot date.
+Home-page tiles for curated shelves show the stored snapshots only (no API calls). Opening a shelf refreshes the entries you can see live: 12 per page in the web app, 25 per page in the terminal app (page with `[` and `]`). If refreshing an entry fails, its snapshot is kept. The web app marks such an entry "as of" the snapshot date and the CLI reports `"live": false` for it. The terminal app shows one shelf-level "as of" date in its status line and does not mark individual stale rows. After a host rate-limits a refresh, RepoHub stops refreshing that host's entries for at least 60 seconds (up to an hour, following the host's reset time) and shows their snapshots.
 
 ### Your own shelves
 
@@ -189,7 +203,7 @@ repohub shelf NAME_OR_INDEX [--limit N] [--no-refresh] [--json]
 repohub favorites [--json]
 ```
 
-`search` accepts the [search syntax](#-search-syntax) in its text; tokens in the text override the flags. `--limit` is 1 to 200 for `search` (default 20) and 1 to 50 for `shelf` (default 20). `shelf` takes an exact name (case-insensitive) or the index shown by `repohub shelves`, and shows the first page only. `--no-refresh` makes a curated shelf use its stored snapshots with no API calls. `favorites` and `shelves` do not use the network.
+`search` accepts the [search syntax](#-search-syntax) in its text; tokens in the text override the flags. `--limit` is accepted from 1 to 200 for `search` (default 20), but each host returns at most 30 results per request, so a search shows about 60 rows at most; for `shelf` it is 1 to 50 (default 20). `shelf` takes an exact name (case-insensitive) or the index shown by `repohub shelves`; an argument made only of digits is an index when it is a valid one, otherwise it is matched as a name (with duplicate names the first shelf wins). It shows the first page only. `--no-refresh` makes a curated shelf use its stored snapshots with no API calls. `favorites` and `shelves` do not use the network.
 
 ```bash
 repohub search "terminal ui lang:go stars:>500 nofork" --limit 10
@@ -208,7 +222,7 @@ repohub repo github:BurntSushi/ripgrep --json | jq -r '.release.assets[] | selec
 | `shelves` | `{"schema_version": 1, "shelves": [{"index", "name", "kind", "entries"}]}` (`kind` is `search` or `curated`; `entries` is 0 for search shelves) |
 | `repo` | `{"schema_version": 1, "repo": {...}, "release": {"tag", "published_at", "assets": [{"name", "size", "url", "arch"}]} or null, "readme": text or null}` (`readme` only with `--readme`; `arch` is `arm64`, `x86_64` or `unknown`) |
 
-**Exit codes.** `0` success; `1` error (host failure with no results, unknown shelf or repository, unexpected error); `2` usage error (including a malformed `HOST:OWNER/NAME`); `3` partial success (some results, but a host reported an error); `130` interrupted. Table output cells are sanitised and truncated to keep lines readable.
+**Exit codes.** `0` success; `1` error (a host failed and there were no results, an unknown shelf or repository, an unexpected error, or a curated shelf refresh that failed for every entry even though snapshot rows were printed); `2` usage error (including a malformed `HOST:OWNER/NAME`); `3` partial success (some results, but a host reported an error, or a curated shelf refreshed only some entries); `130` interrupted. Table output cells are sanitised and truncated to keep lines readable.
 
 ## 🧠 How it works
 
@@ -317,6 +331,9 @@ The design and the task-by-task implementation plan are in [`docs/plans/`](docs/
 - GitLab search results carry no language unless you filter by language, and its minimum-stars filter is applied client-side, so a page of results can shrink.
 - Recency filters drop repositories with an unknown push date.
 - Curated shelf refreshes use extra API requests (a bounded number per page, cached for one hour). Without a token GitHub allows only about 60 core requests per hour, so keep a token set for heavy browsing.
+- GitHub's own "updated" ordering differs slightly from the last-push date RepoHub re-sorts by, so `sort:updated` can reorder the fetched page.
+- A rate-limited host stops curated refreshes for a while (at least 60 seconds) and shows the snapshot instead.
+- Personal search shelves are validated: `language` and `topic` must use the same characters the search syntax allows (`topic` is lowercased), `query` is at most 200 characters on one line, and a `repos` key that is empty is an error.
 - GitLab cannot sort by forks or hide forks server-side, so those options only apply to the results that were fetched.
 - Remote images in READMEs can load in the web app (the CSP allows `img-src *`), which shows your IP address to those hosts.
 - The cache is never purged; expired entries are only overwritten.

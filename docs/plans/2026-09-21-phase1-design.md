@@ -90,3 +90,12 @@ What differs from, or was added to, the design above, as found in the code:
 - **Terminal notifications are plain text.** Every `notify(...)` call in the terminal app passes `markup=False`.
 - **CLI output safety.** In `--json` mode, dangerous characters (C1 controls, bidirectional controls, line and paragraph separators) are written as `\uXXXX` escapes, and stdout carries only the JSON document. Table cells are sanitised and truncated (descriptions to 60 characters, slugs to 60, languages to 20), and error messages are capped at 300 characters.
 - **`--no-refresh`.** `repohub shelf` gained `--no-refresh`, which shows a curated shelf from its stored snapshots with no API calls.
+
+### Follow-up after the whole-phase review
+
+- **Rate-limit backoff.** `Hub` remembers per host when a `RateLimited` error was seen (`clock` is injectable). For at least 60 and at most 3600 seconds (following the host's reset time when it is known), `curated_page` makes no calls to that host: its entries keep their snapshots and the stored error message is reported. Queued entries re-check this after taking a concurrency slot; other hosts are unaffected.
+- **Personal shelf validation.** For search shelves, `language` and `topic` must match the same patterns as the query tokens (`LANG_RE`, `TOPIC_RE`, now public; `topic` is lowercased), `query` is cleaned, single-line and at most 200 characters (longer is an error), and a `repos` key that is empty or null is an error instead of becoming a search shelf.
+- **Checkbox parsing.** The web `hide_forks` and `archived` values `""`, `0`, `false`, `off` and `no` (any case) mean off; any other value means on, and the form shows the same state.
+- **Shared constants.** `HOSTS`, `MAX_STARS` and `MAX_DAYS` are defined once in `core/models.py` and imported by the parser, shelves, web app and CLI.
+- **CLI.** All parser problems (up to 10 plus the "and more" marker) are printed as `Ignored:` lines; a digits-only shelf argument is an index when valid, otherwise a name (first match wins for duplicates); `search --limit` help notes the 30-per-host request cap.
+- **Tests.** Added checks that shelf indexes agree across the web app, terminal app and CLI, that the real packaged catalog works offline through the CLI, that old cache rows without a `fork` key still load, and relaxed the wall-clock thresholds to 5 seconds.
