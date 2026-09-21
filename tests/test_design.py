@@ -57,6 +57,27 @@ def test_text_meets_wcag_aa_contrast_in_both_themes(theme, fg, bg):
     assert ratio(t[fg], t[bg]) >= 4.5, f"{theme}: {fg} on {bg} is {ratio(t[fg], t[bg]):.2f}:1"
 
 
+# non-text contrast (WCAG 1.4.11): a control's border is often its only visible boundary
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("bg", ["surface", "bg", "surface2"])
+def test_field_borders_meet_3_to_1_against_the_backgrounds_they_sit_on(theme, bg):
+    t = blocks()[theme]
+    assert ratio(t["field-border"], t[bg]) >= 3.0, f"{theme}: field-border on {bg} is {ratio(t['field-border'], t[bg]):.2f}:1"
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+@pytest.mark.parametrize("fg,bg", [("ok", "bg"), ("warn", "bg"), ("bad", "bg"), ("accent", "warn-bg"), ("accent", "bad-bg"),
+                                   ("dim", "warn-bg"), ("dim", "bad-bg"), ("ok", "surface2"), ("bad", "surface2")])
+def test_more_text_pairs_used_by_verdicts_checks_and_banners(theme, fg, bg):
+    t = blocks()[theme]
+    assert ratio(t[fg], t[bg]) >= 4.5
+
+
+def test_controls_use_the_field_border_token_and_focus_is_not_hidden_by_the_header():
+    assert re.search(r"input, select, textarea, button, \.button \{[^}]*border: 1px solid var\(--field-border\)", CSS)
+    assert "scroll-padding-top" in CSS and "main:focus { outline: none; }" in CSS
+
+
 def test_the_two_themes_really_differ():
     b = blocks()
     assert lum(b["light"]["bg"]) > 0.8 and lum(b["dark"]["bg"]) < 0.05
@@ -112,6 +133,9 @@ def test_theme_scripts_persist_the_choice_safely_and_never_throw():
     assert "localStorage" in js and "try" in js and "catch" in js and "repohub-theme" in js
     app_js = (STATIC / "app.js").read_text()
     assert "theme-select" in app_js and "removeAttribute" in app_js and app_js.count("catch") >= 1
+    # survives htmx swapping the whole <body>: delegated listener, re-sync after swaps, bfcache and other tabs
+    assert 'document.addEventListener("change"' in app_js and "htmx:afterSwap" in app_js
+    assert '"pageshow"' in app_js and '"storage"' in app_js
     assert 'v === "auto"' in app_js and "localStorage.removeItem" in app_js
     for bad in ("eval(", "innerHTML", "document.write"):
         assert bad not in js and bad not in app_js
@@ -129,6 +153,10 @@ def test_filters_are_tucked_away_but_open_when_used(client):
     assert "<details class=\"filters\" >" in plain or '<details class="filters" >' in plain.replace("\n", "")
     used = client.get("/search", params={"q": "x", "language": "Rust"}).text
     assert re.search(r'<details class="filters"\s+open>', used)
+    for q in ({"host": "codeberg"}, {"sort": "updated"}, {"hide_forks": "1"}, {"archived": "1"}, {"min_stars": "5"}, {"days": "30"}):
+        assert re.search(r'<details class="filters"\s+open>', client.get("/search", params={"q": "x", **q}).text), q
+    for q in ({"host": "all"}, {"host": "both"}, {"sort": "stars"}):  # the defaults keep it closed
+        assert not re.search(r'<details class="filters"\s+open>', client.get("/search", params={"q": "x", **q}).text), q
     for field in ('name="language"', 'name="min_stars"', 'name="days"', 'name="host"', 'name="sort"', 'name="archived"', 'name="hide_forks"'):
         assert field in plain  # still in the page, so nothing was lost
 

@@ -8,6 +8,7 @@
   --surface: #ffffff;
   --surface2: #eceef3;
   --border: #cfd4de;
+  --field-border: #7a8496;
   --text: #1a1d24;
   --dim: #4f5a6d;
   --accent: #3646c9;
@@ -30,6 +31,7 @@
     --surface: #1a1d25;
     --surface2: #242833;
     --border: #343a48;
+    --field-border: #7a839a;
     --text: #e7e9ef;
     --dim: #a3abbd;
     --accent: #96a4ff;
@@ -52,6 +54,7 @@
   --surface: #1a1d25;
   --surface2: #242833;
   --border: #343a48;
+  --field-border: #7a839a;
   --text: #e7e9ef;
   --dim: #a3abbd;
   --accent: #96a4ff;
@@ -69,7 +72,7 @@
 
 /* ---- base ---- */
 *, *::before, *::after { box-sizing: border-box; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; scroll-padding-top: 9rem; }  /* keeps focused items clear of the sticky header */
 body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 a { color: var(--accent); text-underline-offset: .18em; }
 a:hover { color: var(--accent-hover); }
@@ -81,6 +84,7 @@ code { background: var(--surface2); padding: .1em .35em; border-radius: 4px; ove
 pre { background: var(--surface2); padding: 12px; border-radius: 8px; overflow-x: auto; }
 pre code { background: none; padding: 0; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+main:focus { outline: none; }  /* the skip link's target is not a control: no ring around the whole page */
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .skip-link { position: absolute; left: 12px; top: -60px; z-index: 20; background: var(--accent); color: var(--on-accent); padding: 8px 14px; border-radius: 0 0 8px 8px; text-decoration: none; font-weight: 600; }
 .skip-link:focus { top: 0; color: var(--on-accent); }
@@ -105,7 +109,7 @@ pre code { background: none; padding: 0; }
 .searchbar input[name=language] { width: 8em; }
 
 /* ---- form controls ---- */
-input, select, textarea, button, .button { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 12px; }
+input, select, textarea, button, .button { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--field-border); border-radius: 8px; padding: 7px 12px; }
 input, select, textarea { background: var(--surface); }
 input::placeholder, textarea::placeholder { color: var(--dim); opacity: 1; }
 input[type=checkbox] { width: 1.05em; height: 1.05em; padding: 0; accent-color: var(--accent); vertical-align: -.15em; }

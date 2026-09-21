@@ -30,7 +30,7 @@ After Phase 1 (v0.2.0) the owner asked to work next on the README's "Not include
 | 7. Guided install and run | Approve each command; runs the repository's own code | Done (v0.9.0) |
 | 8. Favorites 2.0 | Tags, notes, collections, new-releases tab | Done (v0.10.0) |
 | 9. Claude Code | Read-only MCP server, "Open in Claude Code", `/repohub` skill | Done (v0.11.0) |
-| 10. UI redesign | Look of the web and terminal apps | Planned, last |
+| 10. UI redesign | Look of the web and terminal apps | Done (v0.12.0) |
 
 Phase 6 decision already made: the clone scan looks only at the clone folder (`REPOHUB_CLONE_DIR`, default `~/playground`) and reads each subfolder's `.git/config` for its origin URL.
 

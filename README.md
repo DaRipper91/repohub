@@ -112,6 +112,9 @@ Open a repository to read its README and release info. Press `f` to favorite it 
 | `Ctrl+F` | Show your favorites |
 | `F2` | Show your accounts: who you are signed in as on each host, plus recent star and fork actions |
 | `F3` / `F4` | Turn your local history on or off / clear it (asks first) |
+| `F5` | Folders: scan for clones and pick extra clone folders |
+| `F6` | Turn guided install on or off (asks first when turning on) |
+| `F7` | Switch between the light and dark theme (remembered) |
 
 The last row of the shelf list, **Recommended for you**, shows suggestions with the reason for each.
 
@@ -327,6 +330,8 @@ repohub repo github:BurntSushi/ripgrep --json | jq -r '.release.assets[] | selec
 
 `repohub cloned` lists repositories already in your clone folder (`REPOHUB_CLONE_DIR`, default `~/playground`) and in any extra folders you picked (see below). It needs no network and looks only at the folder's immediate subfolders, reading each one's `.git/config` for the origin URL (regular files only, never symlinks, size-capped). A repository shows up as **cloned** everywhere in the web app and with a `●` in the terminal app, whatever its folder is called.
 
+**Light and dark themes.** The web app follows your system's light or dark setting. To choose yourself, use the **Theme** switch in the header (Auto, Light or Dark); the choice is remembered in your browser only and applied before the page paints, so there is no flash. In the terminal app press `F7` to switch between light and dark (it works while typing and over a confirmation box, and the choice is remembered on your machine). Every color comes from one set of design tokens, and a test checks that all text and background pairs reach at least 4.5:1 contrast (and control borders 3:1) in both themes. The pages are usable by keyboard alone: a *Skip to content* link, visible focus outlines, labelled landmarks, and reduced-motion support.
+
 **Picking more folders.** By default RepoHub looks only in your clone folder. To include other places, open **Folders** in the web app (or press `F5` in the terminal app) and press a scan button: *home folder* or *whole filesystem*. A scan runs only when you press it. It looks for folders that directly contain git clones from a configured host, never follows symlinks, skips hidden folders, build folders, network mounts and system folders (`/proc`, `/sys`, `/usr`, `/etc`, `/var/lib` and similar), and stops after 30 seconds. The results are not saved; you tick the folders you want and confirm, and only those paths are remembered in `~/.config/repohub/scan_roots.json`. You can remove a picked folder at any time. The web app only accepts folders that the last scan actually found. `repohub roots` lists the folders in use, and `repohub roots --scan` (with `--system` for the whole filesystem) shows what a scan finds without saving anything. In every case only each immediate subfolder's `.git/config` is read, and nothing is run.
 
 **Guided install and run (opt-in).** For a repository that is already cloned, RepoHub can propose the standard build steps for its project type and run **one command at a time, only after you approve that exact command**. It is off by default and separate from cloning: turn it on on the repository's *Install / build* page in the web app, or with `F6` in the terminal app (`i` on a repository opens the steps). What it will and will not do:
@@ -479,7 +484,7 @@ RepoHub grows in phases. Each phase gets a written design, a task-by-task plan, 
 | **7. Guided install and run** | Shows the exact install and run commands for a cloned repo; you approve each command before it runs, and output streams live | ✅ Done (v0.9.0, reviewed) |
 | **8. Favorites 2.0** | Tags, notes and collections for favorites, and a "new releases" tab | ✅ Done (v0.10.0, reviewed) |
 | **9. Claude Code** | An MCP server (read-only by default), "Open in Claude Code" after cloning, and a `/repohub` skill built on the CLI | ✅ Done (v0.11.0, reviewed) |
-| **10. UI redesign** | A better-looking web app and terminal app, done once the features above exist | 📝 Planned |
+| **10. UI redesign** | A calm, consistent look for the web app and the terminal app, with light and dark themes | ✅ Done (v0.12.0, reviewed) |
 
 Standing rules for every phase: the existing clone protections stay as they are; running a repository's own code (Phase 7) is always a separate, explicit, opt-in action that shows exactly what it will run; and actions that change your accounts (Phase 4) are always confirmed and never run from the CLI.
 
@@ -548,7 +553,7 @@ Standing rules for every phase: the existing clone protections stay as they are;
 - **Phase 7, guided install and run (done):** proposing commands from the detector; an approval step for every command; a runner confined to the cloned folder that streams output; strict review because it runs the repository's own code.
 - **Phase 8, favorites 2.0 (done):** storage for tags, notes and collections; editing and filtering in every interface; a "new releases" view.
 - **Phase 9, Claude Code (done):** a read-only MCP server; an "Open in Claude Code" action after cloning; a `/repohub` skill on top of the CLI; cloning or installing through Claude Code stays a separate, individually approved action.
-- **Phase 10, UI redesign:** a design pass over the web and terminal apps, with fresh screenshots.
+- **Phase 10, UI redesign (done):** the "Calm Slate" design system (one set of color tokens shared by a light and a dark theme, checked for WCAG AA contrast), a theme switch in the web header and `F7` in the terminal app, keyboard and screen-reader basics (skip link, landmarks, visible focus), and a tidier header with the search filters in a disclosure.
 
 </details>
 
