@@ -69,8 +69,9 @@ def repo_from_snapshot(entry: ShelfEntry, as_of: str | None) -> Repo:
 
 class Hub:
     def __init__(self, providers: dict, cache: Cache, favorites: Favorites, *,
-                 clock: Callable[[], float] = time.time):
+                 clock: Callable[[], float] = time.time, host_problems: list[str] | None = None):
         self.providers, self.cache, self.favorites = providers, cache, favorites
+        self.host_problems: list[str] = list(host_problems) if host_problems else []
         self._clock = clock
         self._limited_until: dict[str, tuple[float, str]] = {}  # host -> (until, message)
 
