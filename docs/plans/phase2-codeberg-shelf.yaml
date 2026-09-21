@@ -1,0 +1,153 @@
+# Generated once from live Codeberg data on 2026-09-21. Stats are a snapshot; RepoHub refreshes them when a shelf is opened.
+- name: 'Catalog: Codeberg'
+  as_of: '2026-09-21'
+  repos:
+  - repo: codeberg:ziglang/zig
+    note: The Zig language and its toolchain, developed on Codeberg.
+    snapshot:
+      description: General-purpose programming language and toolchain for maintaining robust, optimal, and reusable
+        software.
+      stars: 6644
+      language: Zig
+      license: ''
+      pushed_at: '2026-09-21'
+  - repo: codeberg:forgejo/forgejo
+    note: 'Forgejo itself: the forge software that Codeberg runs.'
+    snapshot:
+      description: Beyond coding. We forge.
+      stars: 5516
+      language: Go
+      license: ''
+      pushed_at: '2026-09-21'
+  - repo: codeberg:dnkl/foot
+    note: A fast, lightweight, minimalistic Wayland terminal emulator.
+    snapshot:
+      description: A fast, lightweight and minimalistic Wayland terminal emulator
+      stars: 2210
+      language: C
+      license: ''
+      pushed_at: '2026-09-18'
+  - repo: codeberg:Freeyourgadget/Gadgetbridge
+    note: Android app that replaces vendor apps for fitness bands and smartwatches, with no cloud.
+    snapshot:
+      description: A free and cloudless replacement for your gadget vendors' closed source Android applications.
+        See the list for supported devices.
+      stars: 1930
+      language: Java
+      license: ''
+      pushed_at: '2026-09-21'
+  - repo: codeberg:ziglings/exercises
+    note: Learn Zig by fixing small broken programs.
+    snapshot:
+      description: Learn the ⚡Zig programming language by fixing tiny broken programs.
+      stars: 1668
+      language: Zig
+      license: ''
+      pushed_at: '2026-09-02'
+  - repo: codeberg:GramEditor/gram
+    note: The Gram code editor.
+    snapshot:
+      description: The Gram Code Editor
+      stars: 1386
+      language: Rust
+      license: ''
+      pushed_at: '2026-09-20'
+  - repo: codeberg:river/river
+    note: A non-monolithic Wayland compositor.
+    snapshot:
+      description: A non-monolithic Wayland compositor
+      stars: 1236
+      language: Zig
+      license: ''
+      pushed_at: '2026-09-13'
+  - repo: codeberg:uzu/strudel
+    note: Live-code algorithmic music patterns in the browser.
+    snapshot:
+      description: Web-based environment for live coding algorithmic patterns, incorporating a faithful port of
+        TidalCycles to JavaScript
+      stars: 1226
+      language: JavaScript
+      license: ''
+      pushed_at: '2026-09-14'
+  - repo: codeberg:readeck/readeck
+    note: A simple web app for saving the web pages you want to keep.
+    snapshot:
+      description: Readeck is a simple web application that lets you save the precious readable content of web pages
+        you like and want to keep forever.
+      stars: 1114
+      language: Go
+      license: ''
+      pushed_at: '2026-09-17'
+  - repo: codeberg:guix/guix
+    note: 'GNU Guix: a transactional package manager and declarative distribution.'
+    snapshot:
+      description: Transactional package manager, declarative GNU/Linux distribution, reproducible deployment tool,
+        and more!
+      stars: 967
+      language: Scheme
+      license: ''
+      pushed_at: '2026-09-21'
+  - repo: codeberg:dnkl/fuzzel
+    note: A Wayland app launcher and fuzzy finder in the spirit of rofi and dmenu.
+    snapshot:
+      description: App launcher and fuzzy finder for Wayland, inspired by rofi(1) and dmenu(1).
+      stars: 916
+      language: C
+      license: ''
+      pushed_at: '2026-09-15'
+  - repo: codeberg:dwl/dwl
+    note: dwm, but for Wayland.
+    snapshot:
+      description: dwm for Wayland
+      stars: 721
+      language: C
+      license: ''
+      pushed_at: '2026-09-21'
+  - repo: codeberg:fairyglade/ly
+    note: A lightweight TUI display manager for Linux and BSD.
+    snapshot:
+      description: A lightweight TUI (ncurses-like) display manager for Linux and BSD.
+      stars: 682
+      language: Zig
+      license: ''
+      pushed_at: '2026-09-08'
+  - repo: codeberg:superseriousbusiness/gotosocial
+    note: A small, fast ActivityPub server.
+    snapshot:
+      description: Fast, fun, small ActivityPub server.
+      stars: 660
+      language: Go
+      license: ''
+      pushed_at: '2026-09-17'
+  - repo: codeberg:forgejo-contrib/forgejo-cli
+    note: Talk to a Forgejo server from the command line.
+    snapshot:
+      description: CLI application for interacting with Forgejo
+      stars: 506
+      language: Rust
+      license: ''
+      pushed_at: '2026-09-21'
+  - repo: codeberg:mikf/gallery-dl
+    note: Command-line downloader for image galleries and collections.
+    snapshot:
+      description: Command-line program to download image galleries and collections from several image hosting sites
+      stars: 495
+      language: Python
+      license: ''
+      pushed_at: '2026-09-20'
+  - repo: codeberg:mergiraf/mergiraf
+    note: A syntax-aware git merge driver for many programming languages.
+    snapshot:
+      description: A syntax-aware git merge driver for a growing collection of programming languages and file formats.
+      stars: 453
+      language: Rust
+      license: ''
+      pushed_at: '2026-09-20'
+  - repo: codeberg:simonrepp/faircamp
+    note: A static site generator for audio producers.
+    snapshot:
+      description: A static site generator for audio producers
+      stars: 416
+      language: Rust
+      license: ''
+      pushed_at: '2026-09-16'
