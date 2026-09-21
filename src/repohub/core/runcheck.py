@@ -30,6 +30,21 @@ class Verdict:
                 "checks": [{"label": c.label, "status": c.status, "detail": c.detail} for c in self.checks]}
 
 
+_OS_WORDS = {"windows": ("windows", "win32", "win64", "win-", "-win", ".exe", ".msi"),
+             "macos": ("macos", "darwin", "osx", "apple", ".dmg", ".pkg"),
+             "linux": ("linux", ".deb", ".rpm", ".appimage", ".snap")}
+_SYSTEM_OS = {"linux": "linux", "darwin": "macos", "windows": "windows"}
+
+
+def asset_os(name: str) -> str | None:
+    """Which operating system a release file is for, from its name; None when it does not say."""
+    low = clean_text(name).lower()
+    for os_name, words in _OS_WORDS.items():
+        if any(w in low for w in words):
+            return os_name
+    return None
+
+
 def kinds_for(repo: Repo, detected: list[str]) -> list[str]:
     """Project kinds: from the cloned folder when there is one, else guessed from the language."""
     if detected:
@@ -44,8 +59,13 @@ def run_check(repo: Repo, release: Release | None, machine: Machine, clone: Clon
     prebuilt = None  # True: a build for this CPU exists; False: builds exist but not for it; None: no release
 
     if release and release.assets:
-        arches = {a.arch for a in release.assets}
-        if machine.arch in arches:
+        mine = _SYSTEM_OS.get(machine.system.lower())
+        usable = [a for a in release.assets if asset_os(a.name) in (None, mine)]
+        arches = {a.arch for a in usable}
+        if not usable:
+            prebuilt = False
+            checks.append(Check("Ready-made build", NO, f"the release files are for other systems, not {clean_text(machine.system)}"))
+        elif machine.arch != "unknown" and machine.arch in arches:
             prebuilt = True
             checks.append(Check("Ready-made build", OK, f"the latest release ({clean_text(release.tag)}) has a {machine.arch} build"))
         elif arches <= {"unknown"}:

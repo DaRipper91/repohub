@@ -514,7 +514,7 @@ def main(argv: list[str] | None = None, *, hub_factory: Callable | None = None,
         if args.command == "check" and _valid_repo_arg(args.repo) is None:
             return _cmd_check(args, None, o)
         if args.command == "cloned":
-            return _cmd_cloned(args, None, o)  # no hub, no network  # rejected before any hub is built
+            return _cmd_cloned(args, None, o)  # no hub, no network
         if hub_factory is None:
             from repohub.config import build_hub as hub_factory
         hub = hub_factory() if args.command != "shelves" else None

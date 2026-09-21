@@ -93,6 +93,7 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
+        await run_in_threadpool(aware.cloned)  # refresh the clone scan off the event loop; pages then read the cache
         resp = await call_next(request)
         resp.headers["Content-Security-Policy"] = CSP
         resp.headers["X-Content-Type-Options"] = "nosniff"
@@ -180,7 +181,7 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         starred = await hub.starred(host, slug) if acct.status == "signed in" else None
         return page(request, "repo.html", d=d, readme_html=render_markdown(d.readme) if d.readme else "",
                     is_fav=hub.favorites.is_favorite(d.repo.key), signed_in=acct.status == "signed in", starred=starred,
-                    verdict=aware.check(d.repo, d.release))
+                    verdict=await run_in_threadpool(aware.check, d.repo, d.release))
 
     @app.get("/recommended", response_class=HTMLResponse)
     async def recommended(request: Request):

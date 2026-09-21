@@ -284,6 +284,8 @@ repohub search TEXT... [--lang L] [--min-stars N] [--days N] [--host ID|all]
 repohub repo HOST:OWNER/NAME [--readme] [--json]
 repohub hosts [--json]
 repohub accounts [--json]
+repohub cloned [--json]
+repohub check HOST:OWNER/NAME [--json]
 repohub recommend [--limit N] [--json]
 repohub similar HOST:OWNER/NAME [--limit N] [--json]
 repohub shelves [--json]
@@ -316,6 +318,10 @@ repohub repo github:BurntSushi/ripgrep --json | jq -r '.release.assets[] | selec
 `repohub accounts` asks each host who your token belongs to (`GET /user`) and shows the account, where the token came from (for example `env GITLAB_TOKEN` or `gh CLI`, never the value), the scopes and rate limit where the host reports them, and a "can I star and fork?" hint. It only reads, stores nothing, and the web app shows the same on `/accounts`. Forgejo hosts do not report scopes, so they show `unknown`.
 
 `repohub recommend` and `repohub similar` are read-only. Suggestions are worked out on your machine from your favorites, your starred repositories (read from each signed-in host, kept in memory for an hour, never saved) and, only if you turn it on, a local history of repositories you opened (off by default, at most 500 repositories for 90 days, cleared with one button). Only plain topic and language searches leave your machine. Every suggestion says why it appears; anything you already saved or starred, forks and archived repositories are left out, and no topic fills more than three slots. On the web the same lists appear on the home page and as "Similar repositories" on a repository page; the history switch and Clear button are on the Accounts page.
+
+`repohub cloned` lists repositories already in your clone folder (`REPOHUB_CLONE_DIR`, default `~/playground`). It needs no network and looks only at the folder's immediate subfolders, reading each one's `.git/config` for the origin URL (regular files only, never symlinks, size-capped). A repository shows up as **cloned** everywhere in the web app and with a `●` in the terminal app, whatever its folder is called.
+
+`repohub check HOST:OWNER/NAME` answers "can I run this here?" as advice, never by running anything: does the latest release have a build for this machine's CPU and operating system, are the build tools for the project type (guessed from the language, or from the file names in the cloned folder) on your `PATH`, is it already cloned. The verdict is one of likely, maybe, needs setup, unlikely or unknown, and it does not check a project's libraries. The same checklist is on every repository page and detail screen.
 
 `repohub hosts` never prints token values: only `token: true/false` and the names of the variables to set. Problems with `hosts.yaml` appear as `warning:` lines on stderr and in `"problems"`.
 
@@ -446,7 +452,7 @@ RepoHub grows in phases. Each phase gets a written design, a task-by-task plan, 
 | **3. Accounts and login** | Uses the sign-ins you already have (env variables, `gh` CLI) and stores nothing; an Accounts page shows who you are on each host, where the token came from, its scopes and rate limit | ✅ Done (v0.4.0, reviewed) |
 | **4. Star and fork** | Star, unstar and fork from the web and terminal apps, always confirmed, with a local action log. The CLI stays read-only | ✅ Done (v0.5.0, reviewed; Codeberg not yet tried with a real token) |
 | **5. Recommendations** | Suggestions from your favorites, your stars, an opt-in local history, and "similar to this repo", all computed on your machine | ✅ Done (v0.6.0, reviewed) |
-| **6. Machine awareness** | "Already cloned" badges, a "Can I run this here?" panel (arm64 release assets, installed toolchains), and a shared project detector | ⏸️ Paused |
+| **6. Machine awareness** | "Already cloned" badges, a "Can I run this here?" panel (arm64 release assets, installed toolchains), and a shared project detector | ✅ Done (v0.7.0, reviewed) |
 | **7. Guided install and run** | Shows the exact install and run commands for a cloned repo; you approve each command before it runs, and output streams live | 📝 Planned |
 | **8. Favorites 2.0** | Tags, notes and collections for favorites, and a "new releases" tab | 📝 Planned |
 | **9. Claude Code** | An MCP server (read-only by default), "Open in Claude Code" after cloning, and a `/repohub` skill built on the CLI | 📝 Planned |
@@ -515,7 +521,7 @@ Standing rules for every phase: the existing clone protections stay as they are;
 - **Phase 3, accounts and login (done):** token discovery per host; identity, scope and rate-limit lookups; an Accounts page in the web app, a key in the terminal app and a read-only `repohub accounts` command; nothing stored on disk.
 - **Phase 4, star and fork (done):** star, unstar and fork for GitHub, GitLab and Forgejo; a confirmation naming the host, repository and account; no automatic retries; a local action log.
 - **Phase 5, recommendations (done):** an interest profile from favorites, stars and an opt-in history; a "Recommended for you" shelf, "Similar repositories" on repo pages, and read-only `repohub recommend` and `repohub similar` commands; every suggestion explains why.
-- **Phase 6, machine awareness:** a project detector (Cargo.toml, pyproject or requirements, package.json, Makefile, Dockerfile); a toolchain check; a "can I run this here?" panel; "already cloned" badges from a scan of your clone folder only.
+- **Phase 6, machine awareness (done):** a project detector (Cargo.toml, pyproject or requirements, package.json, Makefile, Dockerfile); a toolchain check; a "can I run this here?" panel; "already cloned" badges from a scan of your clone folder only.
 - **Phase 7, guided install and run:** proposing commands from the detector; an approval step for every command; a runner confined to the cloned folder that streams output; strict review because it runs the repository's own code.
 - **Phase 8, favorites 2.0:** storage for tags, notes and collections; editing and filtering in every interface; a "new releases" view.
 - **Phase 9, Claude Code:** a read-only MCP server; an "Open in Claude Code" action after cloning; a `/repohub` skill on top of the CLI; cloning or installing through Claude Code stays a separate, individually approved action.

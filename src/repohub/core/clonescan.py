@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import re
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
@@ -16,6 +17,7 @@ from urllib.parse import urlparse
 from repohub.core.hosts import registry
 
 MAX_FOLDERS = 500
+MAX_LISTED = 5000  # directory entries examined at most
 MAX_CONFIG_BYTES = 64 * 1024
 MAX_URL = 300
 _SCP = re.compile(r"^[A-Za-z0-9._-]+@([A-Za-z0-9.-]+):(.+)$")
@@ -37,7 +39,7 @@ class CloneInfo:
 def parse_remote(url: str) -> tuple[str, str] | None:
     """(host id, slug) for a remote URL on a configured host, else None. Credentials are ignored."""
     url = (url or "").strip().strip('"')
-    if not url or len(url) > MAX_URL or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url):
+    if not url or len(url) > MAX_URL or "\\" in url or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url):
         return None
     reg = registry()
     hostname, path = None, ""
@@ -86,11 +88,15 @@ def _read_config(folder: Path) -> str | None:
         cfg = git / "config"
         if cfg.is_symlink():
             return None
-        st = cfg.lstat()
-        if not cfg.is_file() or st.st_size > MAX_CONFIG_BYTES:
-            return None
-        with open(cfg, "rb") as f:
-            return f.read(MAX_CONFIG_BYTES).decode("utf-8", "replace")
+        # O_NOFOLLOW/O_NONBLOCK: a config swapped for a symlink or FIFO after the checks cannot hang or redirect us
+        fd = os.open(cfg, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        try:
+            st = os.fstat(fd)
+            if not stat.S_ISREG(st.st_mode) or st.st_size > MAX_CONFIG_BYTES:
+                return None
+            return os.read(fd, MAX_CONFIG_BYTES).decode("utf-8", "replace")
+        finally:
+            os.close(fd)
     except OSError:
         return None
 
@@ -98,19 +104,20 @@ def _read_config(folder: Path) -> str | None:
 def scan_clones(root: Path | str) -> dict[str, CloneInfo]:
     """Map repository key -> where it is cloned, from the immediate subfolders of ``root``."""
     found: dict[str, CloneInfo] = {}
+    folders: list[os.DirEntry] = []
     try:
-        base = Path(root).expanduser()
-        entries = sorted(os.scandir(base), key=lambda e: e.name)
+        with os.scandir(Path(root).expanduser()) as it:
+            for n, entry in enumerate(it):
+                if n >= MAX_LISTED:
+                    break
+                try:
+                    if not entry.name.startswith(".") and not entry.is_symlink() and entry.is_dir(follow_symlinks=False):
+                        folders.append(entry)
+                except OSError:
+                    continue
     except OSError:
         return found
-    for count, entry in enumerate(entries):
-        if count >= MAX_FOLDERS:
-            break
-        try:
-            if entry.name.startswith(".") or entry.is_symlink() or not entry.is_dir(follow_symlinks=False):
-                continue
-        except OSError:
-            continue
+    for entry in sorted(folders, key=lambda e: e.name)[:MAX_FOLDERS]:
         text = _read_config(Path(entry.path))
         url = _origin_url(text) if text else None
         parsed = parse_remote(url) if url else None

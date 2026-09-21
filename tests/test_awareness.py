@@ -356,3 +356,62 @@ async def test_tui_marks_cloned_repos_and_shows_checklist(tmp_path):
         await pilot.pause()
         text = str(app.screen.query_one("#meta", Static).render())
         assert "Can I run this here? LIKELY" in text and "Ready-made build" in text
+
+
+# ---------------------------------------------------------------- review follow-ups
+
+def test_fifo_in_place_of_config_does_not_block(tmp_path):
+    d = tmp_path / "f" / ".git"
+    d.mkdir(parents=True)
+    os.mkfifo(d / "config")
+    assert scan_clones(tmp_path) == {}  # returns at once instead of waiting for a writer
+
+
+def test_config_swapped_for_symlink_is_refused_at_open(tmp_path, monkeypatch):
+    import repohub.core.clonescan as cs
+
+    make_clone(tmp_path, "a", "https://github.com/o/r.git")
+    real = os.open
+    target = tmp_path / "elsewhere"
+    target.write_text('[remote "origin"]\nurl = https://github.com/o/evil.git\n')
+
+    def swap(path, flags, *a, **k):  # simulate the race: the file becomes a symlink right before it is opened
+        cfg = tmp_path / "a" / ".git" / "config"
+        if str(path) == str(cfg) and not cfg.is_symlink():
+            cfg.unlink()
+            cfg.symlink_to(target)
+        return real(path, flags, *a, **k)
+
+    monkeypatch.setattr(cs.os, "open", swap)
+    assert scan_clones(tmp_path) == {}
+
+
+def test_loose_files_do_not_use_up_the_folder_cap(tmp_path):
+    for i in range(MAX_FOLDERS + 50):
+        (tmp_path / f"0file{i:04d}.txt").write_text("x")
+    make_clone(tmp_path, "zrepo", "https://github.com/o/r.git")
+    assert set(scan_clones(tmp_path)) == {"github:o/r"}
+
+
+def test_backslash_urls_are_rejected():
+    assert parse_remote("https://evil.com\\@github.com/o/r") is None
+
+
+def test_other_os_release_files_do_not_count_as_a_build():
+    win = Asset("tool-windows-arm64.zip", 1, "u", "arm64")
+    mac = Asset("tool-macos-arm64.dmg", 1, "u", "arm64")
+    v = rc.run_check(mk(language=""), Release("v1", None, (win, mac)), ARM)
+    assert checks(v)["Ready-made build"].status == rc.NO and v.level == rc.UNLIKELY
+    linux = Asset("tool-linux-arm64.tar.gz", 1, "u", "arm64")
+    assert rc.run_check(mk(language=""), Release("v1", None, (win, linux)), ARM).level == rc.LIKELY
+
+
+def test_asset_os_detection():
+    assert rc.asset_os("t-x86_64-pc-windows-msvc.zip") == "windows" and rc.asset_os("t.dmg") == "macos"
+    assert rc.asset_os("t_1.0_arm64.deb") == "linux" and rc.asset_os("t-arm64.tgz") is None
+
+
+def test_unknown_machine_arch_never_matches_unlabelled_assets():
+    odd = Machine("unknown", "Linux", None, frozenset())
+    v = rc.run_check(mk(language=""), Release("v1", None, (Asset("t.tgz", 1, "u", "unknown"),)), odd)
+    assert checks(v)["Ready-made build"].status == rc.WARN and v.level != rc.LIKELY
