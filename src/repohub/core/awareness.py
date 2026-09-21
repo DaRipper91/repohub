@@ -16,8 +16,10 @@ SCAN_TTL = 10.0
 
 class Awareness:
     def __init__(self, clone_root: Path | str, machine: Machine | None = None, *,
-                 scan: Callable = scan_clones, clock: Callable[[], float] = time.monotonic):
+                 scan: Callable = scan_clones, clock: Callable[[], float] = time.monotonic,
+                 extra_roots: Callable[[], list] | None = None):
         self.clone_root, self._scan, self._clock = clone_root, scan, clock
+        self._extra = extra_roots
         self._machine = machine
         self._cache: tuple[float, dict[str, CloneInfo]] | None = None
 
@@ -31,12 +33,28 @@ class Awareness:
         """Repository key -> clone. Rescanned at most every few seconds; never raises."""
         now = self._clock()
         if refresh or self._cache is None or now - self._cache[0] > SCAN_TTL:
-            try:
-                found = self._scan(self.clone_root)
-            except Exception:
-                found = {}
+            found: dict[str, CloneInfo] = {}
+            for root in self.roots():
+                try:
+                    for key, info in self._scan(root).items():
+                        found.setdefault(key, info)  # the clone folder first, then picked folders in order
+                except Exception:
+                    continue
             self._cache = (now, found)
         return self._cache[1]
+
+    def roots(self) -> list:
+        """The clone folder, then any extra folders the user picked."""
+        extra: list = []
+        if self._extra is not None:
+            try:
+                extra = [r for r in self._extra() if str(r) != str(self.clone_root)]
+            except Exception:
+                extra = []
+        return [self.clone_root, *extra]
+
+    def invalidate(self) -> None:
+        self._cache = None
 
     def clone_of(self, repo: Repo) -> CloneInfo | None:
         return self.cloned().get(repo.key)

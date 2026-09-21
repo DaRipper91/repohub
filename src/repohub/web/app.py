@@ -17,6 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from repohub.core.awareness import Awareness
+from repohub.core.roots import ScanRoots, discover, home_start
 from repohub.core.browse import load_all_shelves
 from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_clone
 from repohub.core.hosts import registry
@@ -68,8 +69,11 @@ def _refresh_done(tasks: set):
 
 
 def create_app(hub, clone_root, session_token: str | None = None, shelves=None, cloner=do_clone,
-               allowed_hosts=("127.0.0.1", "localhost"), awareness: Awareness | None = None) -> FastAPI:
+               allowed_hosts=("127.0.0.1", "localhost"), awareness: Awareness | None = None,
+               roots: ScanRoots | None = None) -> FastAPI:
     aware = awareness if awareness is not None else Awareness(clone_root)
+    scan_roots = roots if roots is not None else ScanRoots()
+    folder_state: dict = {"report": None, "running": False}  # the last scan lives in memory only
     token = session_token or secrets.token_urlsafe(32)
     if shelves is None:
         loaded = load_all_shelves()
@@ -182,6 +186,49 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         return page(request, "repo.html", d=d, readme_html=render_markdown(d.readme) if d.readme else "",
                     is_fav=hub.favorites.is_favorite(d.repo.key), signed_in=acct.status == "signed in", starred=starred,
                     verdict=await run_in_threadpool(aware.check, d.repo, d.release))
+
+    def _in_use() -> list[str]:
+        return [str(r) for r in aware.roots()]
+
+    @app.get("/folders", response_class=HTMLResponse)
+    async def folders_page(request: Request):
+        return page(request, "folders.html", default=str(clone_root), roots=await run_in_threadpool(scan_roots.list),
+                    report=folder_state["report"], running=folder_state["running"])
+
+    @app.post("/folders/scan")
+    async def folders_scan(scope: str = Form(...), token_field: str = Form("", alias="token")):
+        """Look for clones below the home folder (or the whole filesystem) - only when the user asks."""
+        require_token(token_field)
+        if scope not in ("home", "system"):
+            raise HTTPException(404, "not found")
+        if folder_state["running"]:
+            raise HTTPException(429, "a scan is already running")
+        folder_state["running"] = True
+        try:
+            start = home_start() if scope == "home" else Path("/")
+            folder_state["report"] = await run_in_threadpool(discover, start)
+        finally:
+            folder_state["running"] = False
+        return RedirectResponse("/folders", status_code=303)
+
+    @app.post("/folders/add")
+    async def folders_add(path: list[str] = Form(default=[]), token_field: str = Form("", alias="token")):
+        require_token(token_field)
+        report = folder_state["report"]
+        allowed = {c.path for c in report.candidates} if report else set()
+        picked = [p for p in path[:50] if p in allowed]  # only folders the last scan actually found
+        if picked:
+            await run_in_threadpool(scan_roots.add, picked)
+            aware.invalidate()
+        return RedirectResponse("/folders", status_code=303)
+
+    @app.post("/folders/remove")
+    async def folders_remove(path: str = Form(...), token_field: str = Form("", alias="token")):
+        require_token(token_field)
+        if not await run_in_threadpool(scan_roots.remove, path):
+            raise HTTPException(404, "not found")
+        aware.invalidate()
+        return RedirectResponse("/folders", status_code=303)
 
     @app.get("/recommended", response_class=HTMLResponse)
     async def recommended(request: Request):
@@ -342,4 +389,6 @@ def main(argv: list[str] | None = None) -> None:
     args = parser.parse_args(argv)
     if args.host not in ("127.0.0.1", "localhost"):
         print("WARNING: binding to a non-loopback address exposes clone and favorites to your network.")
-    uvicorn.run(create_app(build_hub(), clone_root()), host=args.host, port=args.port)
+    roots = ScanRoots()
+    uvicorn.run(create_app(build_hub(), clone_root(), roots=roots,
+                           awareness=Awareness(clone_root(), extra_roots=roots.list)), host=args.host, port=args.port)

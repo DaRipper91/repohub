@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Folders · RepoHub{% endblock %}
+{% block body %}<h2>Folders</h2>
+<p class="dim">RepoHub marks a repository as <em>cloned</em> when it finds it in one of these folders. It looks at each folder's immediate subfolders only, reads each one's <code>.git/config</code> for the origin URL, and never runs anything. Nothing is scanned until you press a scan button.</p>
+<h3>In use</h3>
+<ul>
+  <li><code>{{ default }}</code> <span class="dim">(clone folder, set by REPOHUB_CLONE_DIR)</span></li>
+  {% for r in roots %}<li><code>{{ r }}</code>
+    <form method="post" action="/folders/remove" class="inline" hx-boost="true" hx-confirm="Stop looking in this folder?">
+      <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="path" value="{{ r }}"><button>Remove</button></form></li>{% endfor %}
+</ul>
+<h3>Find more</h3>
+<form method="post" action="/folders/scan" class="inline" hx-disabled-elt="find button">
+  <input type="hidden" name="token" value="{{ token }}">
+  <button name="scope" value="home">Scan my home folder</button>
+  <button name="scope" value="system" title="Skips system folders such as /proc, /sys, /usr and /var. Can take up to 30 seconds.">Scan the whole filesystem</button>
+</form>
+<p class="dim">A scan looks for folders that directly contain git clones from a configured host. It stops after 30 seconds, skips hidden folders, symlinks and build folders, and is not saved. Only the folders you pick below are remembered (paths only).</p>
+{% if running %}<p class="banner">A scan is running…</p>{% endif %}
+{% if report %}
+  <h3>Scan results</h3>
+  <p class="dim">Looked at {{ report.dirs_seen }} folders in {{ report.seconds }} s below <code>{{ report.start }}</code>{% if report.truncated %}. <strong>Stopped early</strong>: scan again from a narrower place or pick from what was found{% endif %}.</p>
+  {% if report.candidates %}
+  <form method="post" action="/folders/add">
+    <input type="hidden" name="token" value="{{ token }}">
+    <ul class="checks">
+    {% for c in report.candidates %}{% set used = c.path == default or c.path in roots %}
+      <li><label><input type="checkbox" name="path" value="{{ c.path }}" {% if used %}checked disabled{% endif %}>
+        <code>{{ c.path }}</code> — {{ c.repos }} repositor{{ "y" if c.repos == 1 else "ies" }}{% if c.examples %} <span class="dim">({{ c.examples | join(", ") }}{% if c.repos > c.examples | length %}, …{% endif %})</span>{% endif %}{% if used %} <span class="dim">already in use</span>{% endif %}</label></li>
+    {% endfor %}
+    </ul>
+    <button>Use the selected folders</button>
+  </form>
+  {% else %}<p class="dim">No clones from a configured host were found.</p>{% endif %}
+{% endif %}
+{% endblock %}

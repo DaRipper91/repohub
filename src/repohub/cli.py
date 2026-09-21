@@ -113,6 +113,14 @@ def _build_parser() -> argparse.ArgumentParser:
                                     "and reads each one's .git/config for its origin URL.")
     cl.add_argument("--json", action="store_true")
 
+    ro = sub.add_parser("roots", help="show the folders RepoHub looks in for clones; --scan suggests more (read-only)",
+                        description="Lists the clone folder and any extra folders picked in the web or terminal app. "
+                                    "--scan looks for folders that contain git clones (home folder, or --system for the whole "
+                                    "filesystem), prints them and saves nothing. Pick folders in the apps.")
+    ro.add_argument("--scan", action="store_true")
+    ro.add_argument("--system", action="store_true", help="with --scan: the whole filesystem instead of the home folder")
+    ro.add_argument("--json", action="store_true")
+
     ck = sub.add_parser("check", help="can I run this repository here? (read-only advice)",
                         description="A checklist and verdict for HOST:OWNER/NAME: release builds for this CPU, "
                                     "build tools on this machine, project type and whether it is already cloned. "
@@ -416,8 +424,9 @@ def _cmd_similar(args, hub, o: _Out) -> int:
 def _awareness():
     from repohub.config import clone_root
     from repohub.core.awareness import Awareness
+    from repohub.core.roots import ScanRoots
 
-    return Awareness(clone_root())
+    return Awareness(clone_root(), extra_roots=ScanRoots().list)
 
 
 def _cmd_cloned(args, hub, o: _Out) -> int:
@@ -430,6 +439,42 @@ def _cmd_cloned(args, hub, o: _Out) -> int:
         o.out(_table(["repo", "host", "path"], [[_fit(c.slug, 50), _fit(c.host, 20), _fit(c.path, 80)] for c in items]))
     else:
         o.err("no cloned repositories found in the clone folder")
+    return EXIT_OK
+
+
+def _cmd_roots(args, hub, o: _Out) -> int:
+    from repohub.config import clone_root
+    from repohub.core.roots import ScanRoots, discover, home_start
+
+    if args.system and not args.scan:
+        o.err("error: --system needs --scan")
+        return EXIT_USAGE
+    used = [str(clone_root()), *[r for r in ScanRoots().list() if r != str(clone_root())]]
+    report = None
+    if args.scan:
+        from pathlib import Path
+
+        report = discover(Path("/") if args.system else home_start())
+    if args.json:
+        doc = {"schema_version": SCHEMA_VERSION, "roots": [_cell(r) for r in used]}
+        if report:
+            doc["scan"] = {"start": _cell(report.start), "dirs_seen": report.dirs_seen, "truncated": report.truncated,
+                           "seconds": report.seconds,
+                           "found": [{"path": _cell(c.path), "repos": c.repos, "in_use": c.path in used}
+                                     for c in report.candidates]}
+        o.json(doc)
+        return EXIT_OK
+    o.out(_table(["folder", "status"], [[_fit(r, 90), "in use"] for r in used]))
+    if report:
+        o.err(f"scanned {report.dirs_seen} folders in {report.seconds}s below {_cell(report.start)}"
+              + (" (stopped early)" if report.truncated else ""))
+        if report.candidates:
+            o.out("")
+            o.out(_table(["found folder", "repos", "status"],
+                         [[_fit(c.path, 90), str(c.repos), "in use" if c.path in used else "not used"]
+                          for c in report.candidates], right=(1,)))
+        else:
+            o.err("no folders with clones found")
     return EXIT_OK
 
 
@@ -481,7 +526,7 @@ def _cmd_accounts(args, hub, o: _Out) -> int:
 _COMMANDS = {"search": _cmd_search, "repo": _cmd_repo, "shelves": _cmd_shelves,
              "shelf": _cmd_shelf, "favorites": _cmd_favorites, "accounts": _cmd_accounts,
              "recommend": _cmd_recommend, "similar": _cmd_similar,
-             "cloned": _cmd_cloned, "check": _cmd_check}
+             "cloned": _cmd_cloned, "check": _cmd_check, "roots": _cmd_roots}
 
 
 def main(argv: list[str] | None = None, *, hub_factory: Callable | None = None,
@@ -515,6 +560,8 @@ def main(argv: list[str] | None = None, *, hub_factory: Callable | None = None,
             return _cmd_check(args, None, o)
         if args.command == "cloned":
             return _cmd_cloned(args, None, o)  # no hub, no network
+        if args.command == "roots":
+            return _cmd_roots(args, None, o)  # no hub, no network
         if hub_factory is None:
             from repohub.config import build_hub as hub_factory
         hub = hub_factory() if args.command != "shelves" else None

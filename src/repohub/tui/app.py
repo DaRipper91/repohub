@@ -11,6 +11,7 @@ from textual.widgets import DataTable, Footer, Header, Input, Markdown, Static
 
 from repohub.core.awareness import Awareness
 from repohub.core.browse import load_all_shelves
+from repohub.core.roots import ScanRoots, discover, home_start
 from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_clone
 from repohub.core.providers.base import ProviderError
 from repohub.core.queryparse import parse_query
@@ -216,12 +217,15 @@ class RepoHubApp(App):
     BINDINGS = [Binding("ctrl+f", "favorites", "Favorites"), Binding("escape", "home", "Shelves"),
                 Binding("]", "next_page", "Next page"), Binding("[", "prev_page", "Prev page"),
                 Binding("d", "remove_favorite", "Remove favorite"), Binding("f2", "accounts", "Accounts"), Binding("f3", "history", "History on/off"),
-                Binding("f4", "clear_history", "Clear history"), Binding("a", "accounts", "Accounts", show=False)]
+                Binding("f4", "clear_history", "Clear history"), Binding("f5", "folders", "Folders"),
+                Binding("s", "scan_home", "Scan home", show=False), Binding("w", "scan_system", "Scan all", show=False), Binding("a", "accounts", "Accounts", show=False)]
 
-    def __init__(self, hub, clone_root, shelves=None, cloner=do_clone, awareness=None):
+    def __init__(self, hub, clone_root, shelves=None, cloner=do_clone, awareness=None, roots=None):
         super().__init__()
         self.hub, self.clone_root, self.cloner = hub, clone_root, cloner
         self.awareness = awareness if awareness is not None else Awareness(clone_root)
+        self.roots = roots if roots is not None else ScanRoots()
+        self.scan_report = None  # the last folder scan: in memory only
         if shelves is None:
             loaded = load_all_shelves()
             self.shelves, self.shelf_problems = loaded.shelves, list(loaded.problems)
@@ -273,8 +277,10 @@ class RepoHubApp(App):
         self._status(status)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
-        if action in ("clear_history", "history") and len(self.screen_stack) > 1:
+        if action in ("clear_history", "history", "folders") and len(self.screen_stack) > 1:
             return False
+        if action in ("scan_home", "scan_system"):  # only on the folders view of the main screen
+            return self.view == "folders" and len(self.screen_stack) == 1
         if action == "accounts" and len(self.screen_stack) > 1:  # not from the detail or confirm screens
             return False
         if action in ("next_page", "prev_page"):
@@ -374,8 +380,95 @@ class RepoHubApp(App):
         notes += [f"{'ok' if e.ok else 'failed'} {e.action} {e.slug} on {e.host}" for e in recent]
         self._status("Accounts (nothing is stored).  " + "  ".join(notes))
 
+    # ---- folders: which folders RepoHub looks in for clones (scan only when asked)
+
+    def action_folders(self) -> None:
+        self._show_folders()
+
+    def _show_folders(self, note: str = "") -> None:
+        self.view = "folders"
+        self.refresh_bindings()
+        t = self._table()
+        t.clear(columns=True)
+        t.add_columns("Folder", "Repos", "Status")
+        t.add_row(Text(str(self.clone_root)), Text("-"), Text("in use (clone folder)"), key="root:default")
+        used = {str(self.clone_root)}
+        for r in self.roots.list():
+            used.add(r)
+            t.add_row(Text(r), Text("-"), Text("in use (picked)"), key=f"root:{r}")
+        for i, c in enumerate(self.scan_report.candidates if self.scan_report else []):
+            if c.path not in used:
+                t.add_row(Text(c.path), Text(str(c.repos)), Text("found: Enter to use"), key=f"cand:{i}")
+        hint = "Folders. s scans your home folder, w the whole filesystem, Enter uses a found folder, d removes a picked one."
+        if self.scan_report:
+            r = self.scan_report
+            hint += f"  Last scan: {r.dirs_seen} folders in {r.seconds}s{' (stopped early)' if r.truncated else ''}."
+        self._status((note + "  " if note else "") + hint)
+
+    def action_scan_home(self) -> None:
+        self._start_scan(home_start())
+
+    def action_scan_system(self) -> None:
+        from pathlib import Path
+
+        def done(ok: bool | None) -> None:
+            if ok:
+                self._start_scan(Path("/"))
+
+        self.push_screen(ConfirmWrite("Scan the whole filesystem for git clones?\nSystem folders are skipped; it stops after 30 seconds."), done)
+
+    def _start_scan(self, start) -> None:
+        self._status("Scanning… (up to 30 seconds)")
+        self.run_worker(self._scan(start), exclusive=True)
+
+    async def _scan(self, start) -> None:
+        try:
+            self.scan_report = await asyncio.to_thread(discover, start)
+        except Exception as e:
+            self.notify(f"Scan failed: {e}", severity="error", markup=False)
+            return
+        if self.view == "folders":
+            self._show_folders(f"Found {len(self.scan_report.candidates)} folder(s) with clones.")
+
+    def _folder_key(self) -> str:
+        t = self._table()
+        if t.row_count == 0:
+            return ""
+        try:
+            return t.coordinate_to_cell_key(t.cursor_coordinate).row_key.value or ""
+        except Exception:
+            return ""
+
+    def _use_folder(self, index: int) -> None:
+        cands = self.scan_report.candidates if self.scan_report else []
+        if not 0 <= index < len(cands):
+            return
+        path = cands[index].path
+
+        def done(ok: bool | None) -> None:
+            if ok:
+                added = self.roots.add([path])
+                self.awareness.invalidate()
+                self._show_folders("Added." if added else "Could not add that folder.")
+
+        self.push_screen(ConfirmWrite(f"Look for clones in this folder too?\n{path}"), done)
+
+    def _drop_folder(self, path: str) -> None:
+        def done(ok: bool | None) -> None:
+            if ok:
+                self.roots.remove(path)
+                self.awareness.invalidate()
+                self._show_folders("Removed.")
+
+        self.push_screen(ConfirmWrite(f"Stop looking for clones in this folder?\n{path}"), done)
+
     def action_remove_favorite(self) -> None:
-        """Favorites view only: remove the selected row without opening it (works for unconfigured hosts)."""
+        """Favorites view: remove the selected row without opening it. Folders view: stop using a picked folder."""
+        if self.view == "folders":
+            key = self._folder_key()
+            if key.startswith("root:") and key != "root:default":
+                self._drop_folder(key[5:])
+            return
         if self.view != "favorites":
             return
         t = self._table()
@@ -483,7 +576,9 @@ class RepoHubApp(App):
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         key = event.row_key.value or ""
-        if key == "recommended":
+        if key.startswith("cand:") and self.view == "folders":
+            self._use_folder(int(key[5:]))
+        elif key == "recommended":
             self._status("Working out recommendations…")
             self.run_worker(self._show_recommended(), exclusive=True)
         elif key.startswith("shelf:"):
