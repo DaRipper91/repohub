@@ -21,7 +21,7 @@ from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_cl
 from repohub.core.hosts import registry
 from repohub.core.models import SORTS, SearchFilters
 from repohub.core.hub import CURATED_PAGE
-from repohub.core.providers.base import NotFound, ProviderError, valid_slug
+from repohub.core.providers.base import NotFound, ProviderError
 from repohub.core.models import MAX_DAYS, MAX_STARS
 from repohub.core.queryparse import parse_query
 
@@ -98,7 +98,9 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         return resp
 
     def page(request: Request, name: str, status: int = 200, **ctx):
-        return templates.TemplateResponse(request, name, {"token": token, "form": {}, "q": "", **ctx}, status_code=status)
+        host_ids = ["all", *registry().ids]
+        return templates.TemplateResponse(request, name, {"token": token, "form": {}, "q": "", "host_ids": host_ids, **ctx},
+                                          status_code=status)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException):
@@ -109,12 +111,12 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
             raise HTTPException(403, "missing or invalid session token")
 
     def require_repo(host: str, slug: str) -> None:
-        if host not in registry().ids or not valid_slug(slug, host):
+        if not registry().slug_ok(host, slug):
             raise HTTPException(404, "not found")
 
     @app.get("/", response_class=HTMLResponse)
     async def home(request: Request):
-        return page(request, "home.html", shelves=list(enumerate(shelf_list)), problems=problems[:MAX_BANNERS])
+        return page(request, "home.html", shelves=list(enumerate(shelf_list)), problems=[*hub.host_problems, *problems][:MAX_BANNERS])
 
     @app.get("/shelf/{index}", response_class=HTMLResponse)
     async def shelf(request: Request, index: int):
@@ -146,15 +148,15 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
     @app.get("/search", response_class=HTMLResponse)
     async def search(request: Request, q: str = "", language: str = "", min_stars: str = "",
                      days: str = "",
-                     host: str = "both", archived: str = "", sort: str = "stars", hide_forks: str = ""):
-        if host != "both" and host not in registry().ids:
+                     host: str = "all", archived: str = "", sort: str = "stars", hide_forks: str = ""):
+        if host not in ("all", "both") and host not in registry().ids:
             raise HTTPException(400, "bad host")
         if sort not in SORTS:
             raise HTTPException(400, "bad sort")
         min_stars = _int_param(min_stars, "min_stars", MAX_STARS)
         days = _int_param(days, "days", MAX_DAYS)
         filters = SearchFilters(language=language or None, min_stars=min_stars,
-                                updated_within_days=days or None, hosts=registry().ids if host == "both" else (host,),
+                                updated_within_days=days or None, hosts=registry().ids if host in ("all", "both") else (host,),
                                 include_archived=_checked(archived), sort=sort, hide_forks=_checked(hide_forks))
         parsed = parse_query(q, filters)
         result = await hub.search(parsed.text, parsed.filters)

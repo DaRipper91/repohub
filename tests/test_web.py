@@ -487,3 +487,119 @@ def test_checkbox_values(fp, value, expected):
     assert gh.last_filters.hide_forks is expected and gh.last_filters.include_archived is expected
     checked = 'name="hide_forks" value="1" checked' in r.text
     assert checked is expected
+
+
+# ---- Task 6: every registered host ----
+from repohub.core.hosts import BUILTIN_HOSTS, HostRegistry, HostSpec, set_registry  # noqa: E402
+
+
+def _multi(tmp_path, extra_host=None, **hubkw):
+    gh = FakeProvider("github", [mk("github", "o/r", 50)])
+    gl = FakeProvider("gitlab", [mk("gitlab", "g/sub/p", 40)])
+    cb = FakeProvider("codeberg", [mk("codeberg", "o/r", 30, url="https://codeberg.org/o/r")])
+    provs = [gh, gl, cb]
+    if extra_host:
+        provs.append(FakeProvider(extra_host, [mk(extra_host, "o/x", 5)]))
+    hub = make_hub(*provs)
+    hub.host_problems = hubkw.get("host_problems", [])
+    calls = []
+
+    def cloner(url, root):
+        calls.append((url, root))
+        return tmp_path / "r"
+
+    app = create_app(hub, tmp_path, session_token=TOKEN, shelves=[], cloner=cloner)
+    return TestClient(app, base_url="http://localhost"), hub, provs, calls
+
+
+def test_search_host_codeberg_reaches_only_codeberg(tmp_path):
+    client, _, (gh, gl, cb), _ = _multi(tmp_path)
+    assert client.get("/search", params={"q": "x", "host": "codeberg"}).status_code == 200
+    assert cb.calls == 1 and gh.calls == 0 and gl.calls == 0
+
+
+def test_search_unknown_host_is_400(tmp_path):
+    client, *_ = _multi(tmp_path)
+    assert client.get("/search", params={"q": "x", "host": "nowhere"}).status_code == 400
+
+
+@pytest.mark.parametrize("value", ["all", "both"])
+def test_search_all_and_legacy_both_query_every_provider(tmp_path, value):
+    client, _, provs, _ = _multi(tmp_path)
+    r = client.get("/search", params={"q": "x", "host": value})
+    assert r.status_code == 200 and all(p.calls == 1 for p in provs)
+    assert '<option value="all" selected>' in r.text
+
+
+def test_dropdown_lists_all_registered_hosts(tmp_path):
+    set_registry(HostRegistry(BUILTIN_HOSTS + (HostSpec("mine", "forgejo", "Mine", "git.example.org",
+                                                        "https://git.example.org/api/v1"),)))
+    client, *_ = _multi(tmp_path, extra_host="mine")
+    html = client.get("/").text
+    for h in ("all", "github", "gitlab", "codeberg", "mine"):
+        assert f'<option value="{h}"' in html
+    assert '<option value="both"' not in html
+    assert "Search GitHub and GitLab" not in html
+
+
+def test_repo_page_for_codeberg_has_badge(tmp_path):
+    client, *_ = _multi(tmp_path)
+    r = client.get("/repo/codeberg/o/r")
+    assert r.status_code == 200 and 'class="badge codeberg"' in r.text
+
+
+def test_repo_page_rejects_bad_codeberg_slug_and_unknown_host(tmp_path):
+    client, *_ = _multi(tmp_path)
+    assert client.get("/repo/codeberg/o/r/readme").status_code == 404
+    assert client.get("/repo/nowhere/o/r").status_code == 404
+    assert client.get("/repo/gitlab/g/sub/p").status_code == 200
+
+
+def test_favorite_whose_host_is_gone_renders_and_links_404(tmp_path):
+    client, hub, *_ = _multi(tmp_path)
+    hub.favorites.add(mk("oldhost", "o/r", 5, description=XSS))
+    r = client.get("/favorites")
+    assert r.status_code == 200 and "o/r" in r.text and XSS not in r.text
+    assert client.get("/repo/oldhost/o/r").status_code == 404
+    assert client.get("/clone", params={"host": "oldhost", "slug": "o/r"}).status_code == 404
+
+
+def test_favorite_toggle_for_codeberg(tmp_path):
+    client, hub, *_ = _multi(tmp_path)
+    r = client.post("/favorite", data={"host": "codeberg", "slug": "o/r", "token": TOKEN})
+    assert r.status_code == 200 and "Favorited" in r.text and hub.favorites.is_favorite("codeberg:o/r")
+    assert client.post("/favorite", data={"host": "codeberg", "slug": "o/r", "token": "bad"}).status_code == 403
+    r = client.post("/favorite", data={"host": "codeberg", "slug": "o/r", "token": TOKEN})
+    assert "Favorited" not in r.text and not hub.favorites.is_favorite("codeberg:o/r")
+    assert client.post("/favorite", data={"host": "nowhere", "slug": "o/r", "token": TOKEN}).status_code == 404
+
+
+def test_clone_confirm_and_post_for_codeberg(tmp_path):
+    client, _, _, calls = _multi(tmp_path)
+    r = client.get("/clone", params={"host": "codeberg", "slug": "o/r"})
+    assert r.status_code == 200 and "Clone o/r?" in r.text and "<pre>" in r.text
+    assert 'name="host" value="codeberg"' in r.text
+    assert client.get("/clone", params={"host": "codeberg", "slug": "o/r/x"}).status_code == 404
+    assert client.post("/clone", data={"host": "codeberg", "slug": "o/r", "token": "bad"}).status_code == 403
+    assert not calls
+    r = client.post("/clone", data={"host": "codeberg", "slug": "o/r", "token": TOKEN})
+    assert r.status_code == 200 and calls == [("https://codeberg.org/o/r.git", tmp_path)]
+    assert "Cloned to" in r.text
+
+
+def test_host_problem_banners_are_escaped_and_capped(tmp_path):
+    problems = [f"hp{i} {XSS} {IMG}" for i in range(15)]
+    client, *_ = _multi(tmp_path, host_problems=problems)
+    html = client.get("/").text
+    assert html.count('class="banner warn"') == 10 and "hp9" in html and "hp10" not in html
+    assert XSS not in html and "<img" not in html and "&lt;script&gt;" in html and "&lt;img" in html
+
+
+def test_no_host_problems_no_banners(tmp_path):
+    client, *_ = _multi(tmp_path)
+    assert 'class="banner warn"' not in client.get("/").text
+
+
+def test_css_has_codeberg_badge(tmp_path):
+    client, *_ = _multi(tmp_path)
+    assert ".badge.codeberg" in client.get("/static/app.css").text
