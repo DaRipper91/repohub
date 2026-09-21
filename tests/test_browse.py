@@ -343,3 +343,36 @@ def test_problem_path_is_cleaned_and_capped(tmp_path):
 
 
 from pathlib import Path  # noqa: E402
+
+
+# ---- search-shelf field validation
+
+@pytest.mark.parametrize("item,msg", [
+    ({"name": "S", "language": "Rust; drop"}, r"shelf 'S'.*language"),
+    ({"name": "S", "language": ""}, r"shelf 'S'.*language"),
+    ({"name": "S", "topic": "Bad Topic"}, r"shelf 'S'.*topic"),
+    ({"name": "S", "topic": "-x"}, r"shelf 'S'.*topic"),
+    ({"name": "S", "query": "x" * 201}, r"shelf 'S'.*query.*200"),
+])
+def test_search_shelf_fields_are_validated(item, msg):
+    with pytest.raises(ValueError, match=msg):
+        parse_shelves([item])
+
+
+def test_search_shelf_fields_are_normalised():
+    s = parse_shelves([{"name": "S", "topic": "TUI", "language": "C++", "query": "a\nb\tc \x07d"}])[0]
+    assert s.topic == "tui" and s.language == "C++" and s.query == "a b c d"
+    assert parse_shelves([{"name": "S", "query": "x" * 200}])[0].query == "x" * 200
+
+
+@pytest.mark.parametrize("repos", [[], None])
+def test_empty_repos_is_an_error(repos):
+    with pytest.raises(ValueError, match=r"shelf 'S'.*repos must not be empty"):
+        parse_shelves([{"name": "S", "topic": "tui", "repos": repos}])
+
+
+def test_shared_constants_come_from_models():
+    from repohub.core import browse, models, queryparse
+    assert models.HOSTS == ("github", "gitlab") and models.MAX_STARS == 10_000_000 and models.MAX_DAYS == 36500
+    assert browse.HOSTS is models.HOSTS and queryparse.HOSTS is models.HOSTS
+    assert queryparse.LANG_RE.match("C++") and queryparse.TOPIC_RE.match("tui")

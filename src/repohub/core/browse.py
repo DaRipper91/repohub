@@ -16,14 +16,14 @@ from pathlib import Path
 import yaml
 from platformdirs import user_config_dir
 
-from repohub.core.models import SearchFilters
+from repohub.core.models import HOSTS, MAX_STARS, SearchFilters
 from repohub.core.providers.base import valid_slug
+from repohub.core.queryparse import LANG_RE, TOPIC_RE
 from repohub.core.textsafe import clean_text
 
-HOSTS = ("github", "gitlab")
 MAX_NOTE = 200
 MAX_DESC = 300
-MAX_STARS = 10_000_000
+MAX_QUERY = 200
 MAX_ENTRIES = 1000
 MAX_SHELVES = 200
 MAX_PERSONAL_BYTES = 1_000_000
@@ -205,14 +205,23 @@ def _parse_shelf(i: int, item: object) -> Shelf:
         raise ValueError(f"{bad}: name must be a non-empty string")
     name = _text(item["name"], _NAME_LEN)
     kw: dict = {"name": name}
+    label = f"shelf {_show(name)}"
     for k in ("query", "topic", "language", "as_of"):
         v = item.get(k)
         if v is None:
             continue
         try:
-            kw[k] = _str_field(k, v, MAX_DESC, dates=k in _DATE_FIELDS)
+            kw[k] = _str_field(k, v, MAX_QUERY + 1 if k == "query" else MAX_DESC, dates=k in _DATE_FIELDS)
         except ValueError as e:
             raise ValueError(f"{bad}: {e}") from e
+        if k == "query" and len(kw[k]) > MAX_QUERY:
+            raise ValueError(f"{label}: query is too long (over {MAX_QUERY} characters)")
+        if k == "language" and not LANG_RE.match(kw[k]):
+            raise ValueError(f"{label}: language has unsupported characters: {_show(v)}")
+        if k == "topic":
+            kw[k] = kw[k].lower()
+            if not TOPIC_RE.match(kw[k]):
+                raise ValueError(f"{label}: topic has unsupported characters: {_show(v)}")
     for k in ("min_stars", "days"):
         if k in item:
             v = item[k]
@@ -220,6 +229,8 @@ def _parse_shelf(i: int, item: object) -> Shelf:
                 raise ValueError(f"{bad}: {k} must be an integer between 0 and {MAX_STARS}")
             kw[k] = v
     if "repos" in item:
+        if not item["repos"]:  # [] or None must not silently become a search shelf
+            raise ValueError(f"shelf {_show(name)}: repos must not be empty")
         kw["repos"] = _parse_entries(name, item["repos"])
     return Shelf(**kw)
 

@@ -3,17 +3,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 
-from repohub.core.models import SORTS, SearchFilters
+from repohub.core.models import HOSTS, MAX_DAYS, MAX_STARS, SORTS, SearchFilters
 from repohub.core.textsafe import clean_text
 
-MAX_STARS = 10_000_000
-MAX_DAYS = 36500
 MAX_PROBLEMS = 10
 _MORE = "... and more problems ignored"
-HOSTS = ("github", "gitlab")
 
-_LANG = re.compile(r"^[A-Za-z0-9+#._-]{1,40}$")
-_TOPIC = re.compile(r"^[a-z0-9][a-z0-9-]{0,49}$")
+LANG_RE = re.compile(r"^[A-Za-z0-9+#._-]{1,40}$")
+TOPIC_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,49}$")
 _KEYS = {"lang": "language", "language": "language", "stars": "stars", "days": "days",
          "host": "host", "sort": "sort", "topic": "topic"}
 _FLAGS = {"nofork", "archived"}
@@ -53,7 +50,7 @@ def _int(value: str, name: str, limit: int) -> int:
 
 def _apply(filters: SearchFilters, key: str, value: str) -> SearchFilters:
     if key == "language":
-        if not _LANG.match(value):
+        if not LANG_RE.match(value):
             raise ValueError(f"lang has unsupported characters: '{_show(value)}'")
         return replace(filters, language=value)
     if key == "stars":
@@ -74,7 +71,7 @@ def _apply(filters: SearchFilters, key: str, value: str) -> SearchFilters:
         return replace(filters, sort=v)
     if key == "topic":
         v = value.lower()
-        if not _TOPIC.match(v):
+        if not TOPIC_RE.match(v):
             raise ValueError(f"topic has unsupported characters: '{_show(value)}'")
         return replace(filters, topic=v)
     raise ValueError(f"unknown key {key}")  # unreachable: only keys in _KEYS get here

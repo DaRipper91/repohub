@@ -21,10 +21,10 @@ from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_cl
 from repohub.core.models import SORTS, SearchFilters
 from repohub.core.hub import CURATED_PAGE
 from repohub.core.providers.base import NotFound, ProviderError, valid_slug
+from repohub.core.models import HOSTS, MAX_DAYS, MAX_STARS
 from repohub.core.queryparse import parse_query
 
 HERE = Path(__file__).parent
-HOSTS = ("github", "gitlab")
 CSP = ("default-src 'self'; img-src * data:; style-src 'self' 'unsafe-inline'; script-src 'self'; "
        "frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
 MAX_BANNERS = 10
@@ -33,6 +33,14 @@ _md = MarkdownIt("commonmark", {"html": False})
 
 def render_markdown(text: str) -> str:
     return nh3.clean(_md.render(text or ""), link_rel="noopener noreferrer")
+
+
+_FALSE = {"", "0", "false", "off", "no"}
+
+
+def _checked(raw: str) -> bool:
+    """Checkbox value: empty, 0, false, off and no (any case) are off; anything else is on."""
+    return (raw or "").strip().lower() not in _FALSE
 
 
 def _int_param(raw: str, name: str, maximum: int) -> int:
@@ -142,16 +150,16 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
             raise HTTPException(400, "bad host")
         if sort not in SORTS:
             raise HTTPException(400, "bad sort")
-        min_stars = _int_param(min_stars, "min_stars", 10_000_000)
-        days = _int_param(days, "days", 36500)
+        min_stars = _int_param(min_stars, "min_stars", MAX_STARS)
+        days = _int_param(days, "days", MAX_DAYS)
         filters = SearchFilters(language=language or None, min_stars=min_stars,
                                 updated_within_days=days or None, hosts=HOSTS if host == "both" else (host,),
-                                include_archived=bool(archived), sort=sort, hide_forks=bool(hide_forks))
+                                include_archived=_checked(archived), sort=sort, hide_forks=_checked(hide_forks))
         parsed = parse_query(q, filters)
         result = await hub.search(parsed.text, parsed.filters)
         return page(request, "search.html", q=q, result=result, limit=None, problems=parsed.problems[:11],
-                    form=dict(language=language, min_stars=min_stars, days=days, host=host, archived=archived,
-                              sort=sort, hide_forks=hide_forks))
+                    form=dict(language=language, min_stars=min_stars, days=days, host=host, archived=_checked(archived),
+                              sort=sort, hide_forks=_checked(hide_forks)))
 
     @app.get("/repo/{host}/{slug:path}", response_class=HTMLResponse)
     async def repo_page(request: Request, host: str, slug: str):

@@ -300,3 +300,38 @@ def test_curated_some_refreshes_succeed_exit_3():
     code, out, err = _curated_run(gh([mk(slug="o/r")]))
     doc = json.loads(out)
     assert code == 3 and [r["live"] for r in doc["repos"]] == [True, False]
+
+
+def test_all_parser_problems_are_printed_including_the_more_marker():
+    g = gh()
+    tokens = [f"days:x{i}" for i in range(15)]
+    code, out, err = run(["search", "tui", *tokens], make_hub(g))
+    lines = [ln for ln in err.splitlines() if ln.startswith("Ignored:")]
+    assert len(lines) == 11 and lines[-1] == "Ignored: ... and more problems ignored"
+
+
+def test_digits_only_shelf_argument_index_then_name(monkeypatch):
+    lst = [Shelf("2", query="first"), Shelf("Other", query="o"), Shelf("Other", query="dup")]
+    monkeypatch.setattr(cli, "load_all_shelves", lambda *a, **k: LoadedShelves(list(lst), []))
+    g = gh()
+    assert run(["shelf", "1", "--json"], make_hub(g))[0] == 0 and g.last_query == "o"  # valid index wins
+    g = gh()
+    assert run(["shelf", "2", "--json"], make_hub(g))[0] == 0 and g.last_query == "dup"  # valid index beats name "2"
+    g = gh()
+    assert run(["shelf", "2", "--json"], make_hub(g))[0] == 0
+    lst[2] = Shelf("Third", query="t")
+    g = gh()
+    assert run(["shelf", "2", "--json"], make_hub(g))[0] == 0 and g.last_query == "t"
+    lst[:] = [Shelf("Odd", query="x"), Shelf("5", query="named five")]
+    g = gh()
+    assert run(["shelf", "5", "--json"], make_hub(g))[0] == 0 and g.last_query == "named five"  # not an index: name
+    lst[:] = [Shelf("2", query="first"), Shelf("Other", query="o"), Shelf("Other", query="dup")]
+    g = gh()
+    assert run(["shelf", "OTHER", "--json"], make_hub(g))[0] == 0 and g.last_query == "o"  # first duplicate wins
+    assert run(["shelf", "7"], make_hub(gh()))[0] == 1
+
+
+def test_search_limit_help_mentions_per_host_cap(capsys):
+    with pytest.raises(SystemExit):
+        cli.main(["search", "--help"])
+    assert "30 results per request" in " ".join(capsys.readouterr().out.split())

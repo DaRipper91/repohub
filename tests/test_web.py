@@ -475,3 +475,15 @@ def test_curated_links_are_built_from_validated_entries(tmp_path):
     client, _ = _curated_app(tmp_path, 2)
     html = client.get("/shelves/0").text
     assert 'href="/repo/github/o/r0"' in html and 'href="/repo/github/o/r1"' in html
+
+
+@pytest.mark.parametrize("value,expected", [
+    ("", False), ("0", False), ("false", False), ("OFF", False), ("No", False),
+    ("1", True), ("on", True), ("true", True), ("yes", True)])
+def test_checkbox_values(fp, value, expected):
+    client, gh = fp
+    r = client.get("/search", params={"q": "x", "hide_forks": value, "archived": value})
+    assert r.status_code == 200
+    assert gh.last_filters.hide_forks is expected and gh.last_filters.include_archived is expected
+    checked = 'name="hide_forks" value="1" checked' in r.text
+    assert checked is expected

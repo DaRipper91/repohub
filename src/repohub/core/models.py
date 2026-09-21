@@ -3,6 +3,10 @@ from __future__ import annotations
 import re
 from dataclasses import asdict, dataclass
 
+HOSTS = ("github", "gitlab")
+MAX_STARS = 10_000_000
+MAX_DAYS = 36500
+
 _ARM = re.compile(r"(aarch64|arm64|armv8)", re.I)
 _X86 = re.compile(r"(x86[_-]64|amd64|x64)", re.I)
 
@@ -82,7 +86,7 @@ class SearchFilters:
     min_stars: int = 0
     updated_within_days: int | None = None
     topic: str | None = None
-    hosts: tuple[str, ...] = ("github", "gitlab")
+    hosts: tuple[str, ...] = HOSTS
     include_archived: bool = False
     pushed_after: str | None = None  # YYYY-MM-DD, set by search_all from updated_within_days
     sort: str = "stars"

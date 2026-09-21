@@ -14,16 +14,15 @@ import sys
 from typing import Callable, TextIO
 
 from repohub.core.browse import Shelf, load_all_shelves
-from repohub.core.models import SORTS, Repo, SearchFilters
+from repohub.core.models import HOSTS, MAX_DAYS, MAX_STARS, SORTS, Repo, SearchFilters
 from repohub.core.providers.base import NotFound, ProviderError, valid_slug
 from repohub.core.queryparse import parse_query
 from repohub.core.textsafe import clean_text
 
 SCHEMA_VERSION = 1
-MAX_PROBLEMS_SHOWN = 10
+MAX_PROBLEMS_SHOWN = 11  # the parser keeps at most 10 problems plus a final "and more" marker
 DESC_WIDTH = 60
 MSG_CAP = 300
-HOSTS = ("github", "gitlab")
 
 EXIT_OK, EXIT_ERROR, EXIT_USAGE, EXIT_PARTIAL = 0, 1, 2, 3
 
@@ -58,14 +57,15 @@ def _build_parser() -> argparse.ArgumentParser:
                                    "such as lang:rust stars:>500 days:90 host:github sort:updated nofork archived.")
     s.add_argument("text", nargs="+", metavar="TEXT")
     s.add_argument("--lang", metavar="L")
-    s.add_argument("--min-stars", type=_bounded(0, 10_000_000), default=0, metavar="N")
-    s.add_argument("--days", type=_bounded(0, 36500), default=None, metavar="N",
+    s.add_argument("--min-stars", type=_bounded(0, MAX_STARS), default=0, metavar="N")
+    s.add_argument("--days", type=_bounded(0, MAX_DAYS), default=None, metavar="N",
                    help="only repositories pushed within N days")
     s.add_argument("--host", choices=("github", "gitlab", "both"), default=None)
     s.add_argument("--sort", choices=SORTS, default=None)
     s.add_argument("--no-forks", action="store_true")
     s.add_argument("--archived", action="store_true", help="include archived repositories")
-    s.add_argument("--limit", type=_bounded(1, 200), default=20, metavar="N")
+    s.add_argument("--limit", type=_bounded(1, 200), default=20, metavar="N",
+                   help="show at most N results (each host returns at most 30 results per request)")
     s.add_argument("--json", action="store_true")
 
     r = sub.add_parser("repo", help="show one repository", description="Show one repository: HOST:OWNER/NAME.")
@@ -276,11 +276,13 @@ def _cmd_shelves(args, hub, o: _Out) -> int:
 
 def _find_shelf(shelves: list[Shelf], key: str) -> Shelf | None:
     low = key.strip().lower()
+    # A digits-only argument is an index when it is a valid one; otherwise (or for any other text)
+    # it is matched as a name, case-insensitively. With duplicate names the first shelf wins.
+    if low.isascii() and low.isdigit() and int(low) < len(shelves):
+        return shelves[int(low)]
     for s in shelves:
         if s.name.lower() == low:
             return s
-    if low.isascii() and low.isdigit() and int(low) < len(shelves):
-        return shelves[int(low)]
     return None
 
 
