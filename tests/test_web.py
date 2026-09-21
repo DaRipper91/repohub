@@ -45,6 +45,19 @@ def test_search_escapes_descriptions(setup):
     assert "o/r" in r.text and "<script>alert(1)</script>" not in r.text and "&lt;script&gt;" in r.text
 
 
+def test_search_form_has_labelled_numeric_filters_and_no_bare_zeros(setup):
+    client, *_ = setup
+    r = client.get("/search", params={"q": "x"})
+    assert 'placeholder="min' in r.text and 'placeholder="days"' in r.text
+    assert 'name="min_stars"' in r.text and 'value="0"' not in r.text
+
+
+def test_repo_page_layout_lets_the_sidebar_shrink(setup):
+    client, *_ = setup
+    css = client.get("/static/app.css").text
+    assert "minmax(0,1fr)" in css and ".layout>*{min-width:0}" in css
+
+
 def test_search_rejects_bad_host(setup):
     client, *_ = setup
     assert client.get("/search", params={"q": "x", "host": "evil"}).status_code == 400

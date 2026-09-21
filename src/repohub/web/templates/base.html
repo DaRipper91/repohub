@@ -13,8 +13,8 @@
   <form action="/search" method="get" class="searchbar">
     <input name="q" value="{{ q | default('') }}" placeholder="Search GitHub and GitLab" aria-label="Search" autofocus>
     <input name="language" value="{{ form.language | default('') }}" placeholder="language" aria-label="Language" size="9">
-    <input name="min_stars" type="number" min="0" value="{{ form.min_stars | default(0) }}" aria-label="Minimum stars" title="Minimum stars">
-    <input name="days" type="number" min="0" value="{{ form.days | default(0) }}" aria-label="Updated within days" title="Updated within N days (0 = any)">
+    <input name="min_stars" type="number" min="0" value="{{ form.min_stars if form and form.min_stars else '' }}" placeholder="min ★" aria-label="Minimum stars" title="Minimum stars" class="num">
+    <input name="days" type="number" min="0" value="{{ form.days if form and form.days else '' }}" placeholder="days" aria-label="Updated within days" title="Updated within N days (empty = any)" class="num">
     <select name="host" aria-label="Host">
       {% for h in ["both", "github", "gitlab"] %}<option value="{{ h }}" {% if form and form.host == h %}selected{% endif %}>{{ h }}</option>{% endfor %}
     </select>
