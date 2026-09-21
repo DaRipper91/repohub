@@ -17,9 +17,13 @@ class FakeProvider:
         self.host, self.repos, self.error = host, repos or [], error
         self._readme, self._release, self.detail_error = readme, release, detail_error
         self.calls = 0
+        self.last_filters = None
+        self.last_query = None
 
     async def search(self, query, filters, per_page=30):
         self.calls += 1
+        self.last_filters = filters
+        self.last_query = query
         if self.error:
             raise self.error
         return list(self.repos)

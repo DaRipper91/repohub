@@ -1,6 +1,8 @@
+from dataclasses import asdict
+
 import pytest
 
-from repohub.core.models import Asset, Release, Repo, SearchFilters, parse_arch
+from repohub.core.models import SORTS, Asset, Release, Repo, SearchFilters, parse_arch
 
 
 @pytest.mark.parametrize("name,arch", [
@@ -43,3 +45,25 @@ def test_release_roundtrip_and_arm64_flag():
 def test_filters_default_to_both_hosts_and_hide_archived():
     f = SearchFilters()
     assert f.hosts == ("github", "gitlab") and f.include_archived is False
+
+
+def test_old_cached_row_without_fork_loads():
+    row = make_repo().to_dict()
+    del row["fork"]
+    assert Repo.from_dict(row).fork is False
+
+
+def test_fork_round_trips():
+    assert Repo.from_dict(make_repo(fork=True).to_dict()).fork is True
+
+
+def test_search_filters_new_defaults():
+    f = SearchFilters()
+    assert f.sort == "stars"
+    assert f.hide_forks is False
+    assert SORTS == ("stars", "updated", "forks")
+
+
+def test_search_filters_cache_key_covers_new_fields():
+    assert asdict(SearchFilters(sort="updated")) != asdict(SearchFilters())
+    assert asdict(SearchFilters(hide_forks=True)) != asdict(SearchFilters())

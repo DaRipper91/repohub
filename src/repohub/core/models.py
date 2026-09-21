@@ -55,6 +55,7 @@ class Repo:
     archived: bool
     forks: int
     homepage: str
+    fork: bool = False
 
     @property
     def key(self) -> str:
@@ -72,6 +73,9 @@ class Repo:
         return cls(**d)
 
 
+SORTS = ("stars", "updated", "forks")
+
+
 @dataclass(frozen=True)
 class SearchFilters:
     language: str | None = None
@@ -81,3 +85,5 @@ class SearchFilters:
     hosts: tuple[str, ...] = ("github", "gitlab")
     include_archived: bool = False
     pushed_after: str | None = None  # YYYY-MM-DD, set by search_all from updated_within_days
+    sort: str = "stars"
+    hide_forks: bool = False
