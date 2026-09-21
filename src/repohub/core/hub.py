@@ -5,7 +5,7 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 
-from repohub.core.browse import Shelf
+from repohub.core.browse import Shelf, ShelfEntry
 from repohub.core.cache import Cache
 from repohub.core.models import Release, Repo, SearchFilters
 from repohub.core.providers.base import NotFound, ProviderError
@@ -17,6 +17,8 @@ DETAIL_TTL = 3600
 DEGRADED_TTL = 60
 REFRESH_CONCURRENCY = 8
 MAX_README_CHARS = 200_000
+CURATED_PAGE = 12
+MAX_CURATED_LIMIT = 50
 
 
 @dataclass
@@ -32,6 +34,33 @@ class Detail:
     @classmethod
     def from_dict(cls, d: dict) -> "Detail":
         return cls(Repo.from_dict(d["repo"]), d["readme"], Release.from_dict(d["release"]) if d["release"] else None)
+
+
+@dataclass
+class CuratedItem:
+    repo: Repo
+    note: str
+    as_of: str | None
+    live: bool
+
+
+@dataclass
+class CuratedPage:
+    items: list[CuratedItem]
+    total: int
+    offset: int
+    limit: int
+    errors: dict[str, str]
+
+
+def repo_from_snapshot(entry: ShelfEntry, as_of: str | None) -> Repo:
+    """Network-free Repo for a curated entry, built from its (optional) snapshot."""
+    snap = entry.snapshot
+    return Repo(host=entry.host, slug=entry.slug, url=f"https://{entry.host}.com/{entry.slug}",
+                description=snap.description if snap else "", stars=snap.stars if snap else 0,
+                language=snap.language if snap else "", license=snap.license if snap else "",
+                topics=(), pushed_at=snap.pushed_at if snap else "", archived=False, forks=0,
+                homepage="", fork=False)
 
 
 class Hub:
@@ -56,7 +85,55 @@ class Hub:
         return result
 
     async def shelf(self, shelf: Shelf) -> SearchResult:
+        if shelf.curated:
+            page = await self.curated_page(shelf, 0, CURATED_PAGE)
+            return SearchResult([item.repo for item in page.items], page.errors)
         return await self.search(shelf.query, shelf.filters())
+
+    async def repo_summary(self, host: str, slug: str) -> Repo:
+        provider = self.providers.get(host)
+        if provider is None:
+            raise ProviderError(host, "unknown host")
+        key = f"repo:{host}:{slug.lower()}"
+        hit = self.cache.get(key)
+        if hit is not None:
+            return Repo.from_dict(hit)
+        repo = await provider.repo(slug)
+        self.cache.set(key, repo.to_dict(), DETAIL_TTL)
+        return repo
+
+    async def curated_page(self, shelf: Shelf, offset: int = 0, limit: int = CURATED_PAGE) -> CuratedPage:
+        offset = max(0, offset)
+        limit = min(max(1, limit), MAX_CURATED_LIMIT)
+        entries = shelf.repos[offset:offset + limit]
+        sem = asyncio.Semaphore(REFRESH_CONCURRENCY)
+
+        async def one(entry: ShelfEntry) -> tuple[Repo | None, str | None]:
+            try:
+                async with sem:
+                    return await self.repo_summary(entry.host, entry.slug), None
+            except ProviderError as e:
+                return None, str(e)
+            except Exception:
+                return None, "unexpected error"
+
+        tasks = [asyncio.ensure_future(one(e)) for e in entries]
+        try:
+            results = await asyncio.gather(*tasks)
+        finally:
+            pending = [t for t in tasks if not t.done()]
+            for t in pending:
+                t.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
+        items: list[CuratedItem] = []
+        errors: dict[str, str] = {}
+        for entry, (fresh, err) in zip(entries, results):  # entry order, not returned slug
+            if fresh is None:
+                errors.setdefault(entry.host, err or "unexpected error")
+            items.append(CuratedItem(fresh or repo_from_snapshot(entry, shelf.as_of), entry.note,
+                                     shelf.as_of, fresh is not None))
+        return CuratedPage(items, len(shelf.repos), offset, limit, errors)
 
     async def detail(self, host: str, slug: str) -> Detail:
         provider = self.providers.get(host)

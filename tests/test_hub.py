@@ -246,3 +246,203 @@ async def test_failing_favorite_is_not_refetched_within_max_age():
     await hub.refresh_favorites()
     assert gh.calls == 2
     assert hub.favorites.list() == [mk("github", "o/r")]
+
+
+# ---- curated shelves (Task 8) ----
+
+import asyncio  # noqa: E402
+
+from repohub.core.browse import ShelfEntry, Snapshot  # noqa: E402
+from repohub.core.hub import CuratedPage, repo_from_snapshot  # noqa: E402
+
+
+def curated(n=30, host="github", as_of="2026-09-01", snap=True):
+    entries = tuple(
+        ShelfEntry(host, f"o/r{i}", note=f"note{i}",
+                   snapshot=Snapshot(f"snap{i}", 100 + i, "Go", "MIT", "2026-08-01") if snap else None)
+        for i in range(n))
+    return Shelf(name="C", repos=entries, as_of=as_of)
+
+
+def live_provider(host="github", n=30, stars=999):
+    return FakeProvider(host, [mk(host, f"o/r{i}", stars, description="live") for i in range(n)])
+
+
+def test_repo_from_snapshot_builds_canonical_repo():
+    e = ShelfEntry("gitlab", "g/p", "n", Snapshot("desc", 7, "Rust", "GPL", "2026-01-02"))
+    r = repo_from_snapshot(e, "2026-09-01")
+    assert (r.host, r.slug, r.url) == ("gitlab", "g/p", "https://gitlab.com/g/p")
+    assert (r.description, r.stars, r.language, r.license, r.pushed_at) == ("desc", 7, "Rust", "GPL", "2026-01-02")
+    assert r.topics == () and r.archived is False and r.forks == 0 and r.homepage == "" and r.fork is False
+    bare = repo_from_snapshot(ShelfEntry("github", "a/b"), None)
+    assert bare.url == "https://github.com/a/b"
+    assert (bare.description, bare.stars, bare.language, bare.license, bare.pushed_at) == ("", 0, "", "", "")
+
+
+async def test_curated_pages_slice_and_clamp():
+    hub = make_hub(live_provider())
+    shelf = curated(30)
+    p1 = await hub.curated_page(shelf, 0, 12)
+    assert isinstance(p1, CuratedPage) and len(p1.items) == 12 and p1.total == 30
+    assert (p1.offset, p1.limit) == (0, 12)
+    assert [i.repo.slug for i in p1.items] == [f"o/r{i}" for i in range(12)]
+    assert len((await hub.curated_page(shelf, 24, 12)).items) == 6
+    assert (await hub.curated_page(shelf, 100, 12)).items == []
+    p0 = await hub.curated_page(shelf, -5, 0)
+    assert p0.offset == 0 and p0.limit == 1 and len(p0.items) == 1
+    big = await hub.curated_page(shelf, 0, 1000)
+    assert big.limit == 50 and len(big.items) == 30
+
+
+async def test_snapshot_only_when_every_refresh_fails():
+    gh = FakeProvider("github", detail_error=ProviderError("github", "down"))
+    hub = make_hub(gh)
+    page = await hub.curated_page(curated(5), 0, 12)
+    assert page.errors == {"github": "down"}
+    for i, item in enumerate(page.items):
+        assert item.live is False and item.note == f"note{i}" and item.as_of == "2026-09-01"
+        assert item.repo.stars == 100 + i and item.repo.description == f"snap{i}"
+
+
+async def test_successful_refresh_replaces_repo_but_keeps_entry_note():
+    hub = make_hub(live_provider(n=3))
+    page = await hub.curated_page(curated(3), 0, 12)
+    assert page.errors == {}
+    for i, item in enumerate(page.items):
+        assert item.live is True and item.repo.stars == 999 and item.repo.description == "live"
+        assert item.note == f"note{i}"
+        assert item.repo.topics == ()  # provider repo, not merged with snapshot
+
+
+async def test_partial_failure_mixes_live_and_snapshot():
+    class Flaky(FakeProvider):
+        async def repo(self, slug):
+            if slug in ("o/r1", "o/r2"):
+                raise ProviderError("github", f"bad {slug}")
+            return await super().repo(slug)
+
+    hub = make_hub(Flaky("github", [mk("github", f"o/r{i}", 999) for i in range(4)]))
+    page = await hub.curated_page(curated(4), 0, 12)
+    assert [i.live for i in page.items] == [True, False, False, True]
+    assert page.errors == {"github": "bad o/r1"}  # one per host, first (in entry order) wins
+    assert page.items[1].repo.stars == 101
+
+
+async def test_refreshed_slug_case_difference_maps_to_right_entry():
+    entries = (ShelfEntry("github", "Foo/Bar", "nb", Snapshot("s", 1)),
+               ShelfEntry("github", "Baz/Qux", "nq", Snapshot("s", 2)))
+    gh = FakeProvider("github", [mk("github", "foo/bar", 50), mk("github", "baz/qux", 60)])
+    page = await make_hub(gh).curated_page(Shelf(name="C", repos=entries), 0, 12)
+    assert [(i.repo.stars, i.note, i.live) for i in page.items] == [(50, "nb", True), (60, "nq", True)]
+
+
+async def test_unknown_host_keeps_snapshot_and_reports_unknown_host():
+    page = await make_hub().curated_page(curated(2, host="gitlab"), 0, 12)
+    assert page.errors == {"gitlab": "unknown host"} and not any(i.live for i in page.items)
+
+
+async def test_curated_refresh_concurrency_bounded_and_full():
+    class Counting(FakeProvider):
+        active = peak = 0
+
+        async def repo(self, slug):
+            type(self).active += 1
+            type(self).peak = max(type(self).peak, type(self).active)
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            type(self).active -= 1
+            return await super().repo(slug)
+
+    gh = Counting("github", [mk("github", f"o/r{i}", 5) for i in range(30)])
+    page = await make_hub(gh).curated_page(curated(30), 0, 30)
+    assert 1 < Counting.peak <= 8 and len(page.items) == 30 and all(i.live for i in page.items)
+
+
+async def test_repo_summary_caches_for_ttl_and_refetches_after():
+    from repohub.core.hub import DETAIL_TTL
+    clock = Clock()
+    gh = FakeProvider("github", [mk("github", "O/R", 5)])
+    hub = make_hub(gh, clock=clock)
+    a = await hub.repo_summary("github", "O/R")
+    b = await hub.repo_summary("github", "o/r")
+    assert gh.calls == 1 and a == b
+    assert hub.cache.get("repo:github:o/r") == a.to_dict()
+    clock.t += DETAIL_TTL + 1
+    await hub.repo_summary("github", "o/r")
+    assert gh.calls == 2
+
+
+async def test_repo_summary_unknown_host_and_provider_errors_propagate():
+    hub = make_hub(FakeProvider("github", detail_error=ProviderError("github", "boom")))
+    with pytest.raises(ProviderError, match="unknown host") as ei:
+        await hub.repo_summary("gitlab", "a/b")
+    assert ei.value.host == "gitlab"
+    with pytest.raises(ProviderError, match="boom"):
+        await hub.repo_summary("github", "a/b")
+
+
+async def test_runtime_error_in_refresh_keeps_snapshot_as_unexpected_error():
+    gh = FakeProvider("github", detail_error=RuntimeError("secret internals"))
+    page = await make_hub(gh).curated_page(curated(3), 0, 12)
+    assert page.errors == {"github": "unexpected error"}
+    assert not any(i.live for i in page.items) and page.items[0].repo.description == "snap0"
+
+
+async def test_cancelled_error_from_provider_propagates_and_cleans_up():
+    class Cancelling(FakeProvider):
+        started = 0
+        finished = 0
+
+        async def repo(self, slug):
+            type(self).started += 1
+            if slug == "o/r0":
+                raise asyncio.CancelledError
+            try:
+                await asyncio.Event().wait()
+            finally:
+                type(self).finished += 1
+
+    hub = make_hub(Cancelling("github"))
+    with pytest.raises(asyncio.CancelledError):
+        await hub.curated_page(curated(5), 0, 12)
+    await asyncio.sleep(0)
+    assert Cancelling.started == Cancelling.finished + 1  # siblings were cancelled, not leaked
+
+
+async def test_outer_cancellation_cancels_pending_refreshes():
+    gate = asyncio.Event()
+
+    class Slow(FakeProvider):
+        cancelled = 0
+
+        async def repo(self, slug):
+            try:
+                await gate.wait()
+            except asyncio.CancelledError:
+                type(self).cancelled += 1
+                raise
+
+    hub = make_hub(Slow("github"))
+    task = asyncio.ensure_future(hub.curated_page(curated(20), 0, 12))
+    for _ in range(5):
+        await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    await asyncio.sleep(0)
+    assert Slow.cancelled == 8  # the 8 in flight; the rest never started
+
+
+async def test_curated_page_does_not_touch_favorites():
+    hub = make_hub(live_provider(n=3))
+    await hub.curated_page(curated(3), 0, 12)
+    assert hub.favorites.list() == []
+
+
+async def test_hub_shelf_curated_returns_first_page_repos():
+    hub = make_hub(live_provider(n=30))
+    res = await hub.shelf(curated(30))
+    assert len(res.repos) == 12 and res.errors == {} and all(r.stars == 999 for r in res.repos)
+    bad = make_hub(FakeProvider("github", detail_error=ProviderError("github", "down")))
+    res = await bad.shelf(curated(30))
+    assert res.errors == {"github": "down"} and res.repos[0].description == "snap0"
