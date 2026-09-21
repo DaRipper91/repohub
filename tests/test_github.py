@@ -185,3 +185,28 @@ async def test_repo_404_is_not_found():
     respx.get(f"{API}/repos/o/r").mock(return_value=httpx.Response(404))
     with pytest.raises(NotFound, match="repository not found"):
         await GitHubProvider().repo("o/r")
+
+
+@respx.mock
+@pytest.mark.parametrize("sort,sent", [("updated", "updated"), ("forks", "forks"), ("stars", "stars"), ("bogus", "stars")])
+async def test_sort_is_sent_with_fallback_to_stars(sort, sent):
+    route = respx.get(f"{API}/search/repositories").mock(return_value=httpx.Response(200, json={"items": []}))
+    await GitHubProvider().search("x", SearchFilters(sort=sort))
+    assert route.calls.last.request.url.params["sort"] == sent
+
+
+@respx.mock
+async def test_hide_forks_adds_qualifier_only_when_set():
+    route = respx.get(f"{API}/search/repositories").mock(return_value=httpx.Response(200, json={"items": []}))
+    await GitHubProvider().search("x", SearchFilters(hide_forks=True))
+    assert "fork:false" in route.calls.last.request.url.params["q"]
+    await GitHubProvider().search("x", SearchFilters())
+    assert "fork:false" not in route.calls.last.request.url.params["q"]
+
+
+@respx.mock
+async def test_fork_flag_maps_to_repo():
+    route = respx.get(f"{API}/search/repositories").mock(
+        return_value=httpx.Response(200, json={"items": [{**ITEM, "fork": True}, ITEM]}))
+    repos = await GitHubProvider().search("x", SearchFilters())
+    assert [r.fork for r in repos] == [True, False]

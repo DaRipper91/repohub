@@ -16,6 +16,7 @@ def _to_repo(item: dict) -> Repo:
         stars=item["stargazers_count"], language=clean_text(item.get("language")), license=clean_text(lic),
         topics=tuple(clean_text(t) for t in (item.get("topics") or ())), pushed_at=item.get("pushed_at") or "",
         archived=bool(item.get("archived")), forks=item.get("forks_count", 0), homepage=safe_url(item.get("homepage")),
+        fork=bool(item.get("fork")),
     )
 
 
@@ -79,8 +80,11 @@ class GitHubProvider:
             parts.append(f"pushed:>={filters.pushed_after}")
         if not filters.include_archived:
             parts.append("archived:false")
+        if filters.hide_forks:
+            parts.append("fork:false")
+        sort = {"stars": "stars", "updated": "updated", "forks": "forks"}.get(filters.sort, "stars")
         resp = await self._get("/search/repositories",
-                               {"q": " ".join(parts), "sort": "stars", "order": "desc", "per_page": per_page})
+                               {"q": " ".join(parts), "sort": sort, "order": "desc", "per_page": per_page})
         if resp is None:
             raise ProviderError(self.host, "unexpected response")
         return [_to_repo(i) for i in resp.json()["items"]]

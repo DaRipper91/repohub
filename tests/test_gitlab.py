@@ -182,3 +182,24 @@ async def test_repo_404_is_not_found():
     respx.get(f"{API}/projects/g%2Fp").mock(return_value=httpx.Response(404))
     with pytest.raises(NotFound, match="repository not found"):
         await GitLabProvider().repo("g/p")
+
+
+@respx.mock
+@pytest.mark.parametrize("sort,order", [("updated", "last_activity_at"), ("stars", "star_count"), ("forks", "star_count")])
+async def test_sort_maps_to_order_by(sort, order):
+    route = respx.get(f"{API}/projects").mock(return_value=httpx.Response(200, json=[]))
+    await GitLabProvider().search("x", SearchFilters(sort=sort))
+    assert route.calls.last.request.url.params["order_by"] == order
+
+
+@respx.mock
+async def test_fork_flag_maps_and_hide_forks_is_not_sent():
+    route = respx.get(f"{API}/projects").mock(return_value=httpx.Response(
+        200, json=[{**ITEM, "forked_from_project": {"id": 1}}, ITEM]))
+    repos = await GitLabProvider().search("x", SearchFilters(hide_forks=True))
+    assert [r.fork for r in repos] == [True, False]
+    plain = GitLabProvider()
+    await plain.search("x", SearchFilters())
+    a = dict(route.calls[0].request.url.params)
+    b = dict(route.calls[1].request.url.params)
+    assert a == b

@@ -18,6 +18,7 @@ def _to_repo(item: dict, language: str = "") -> Repo:
         stars=item.get("star_count", 0), language=clean_text(language), license=clean_text((item.get("license") or {}).get("name")),
         topics=tuple(clean_text(t) for t in (item.get("topics") or item.get("tag_list") or ())), pushed_at=item.get("last_activity_at") or "",
         archived=bool(item.get("archived")), forks=item.get("forks_count", 0), homepage="",
+        fork=bool(item.get("forked_from_project")),
     )
 
 
@@ -70,7 +71,7 @@ class GitLabProvider:
 
     @guard_parse
     async def search(self, query: str, filters: SearchFilters, per_page: int = 30) -> list[Repo]:
-        params: dict = {"order_by": "star_count", "sort": "desc", "per_page": per_page, "license": "true"}
+        params: dict = {"order_by": "last_activity_at" if filters.sort == "updated" else "star_count", "sort": "desc", "per_page": per_page, "license": "true"}
         if query.strip():
             params["search"] = query.strip()
         if not filters.include_archived:
