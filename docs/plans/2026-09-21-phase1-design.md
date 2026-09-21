@@ -9,6 +9,8 @@ RepoHub v1 (search, shelves, repo pages, favorites, safe clone; web and terminal
 
 ## Roadmap
 
+> **Update (2026-09-21):** the roadmap was re-ordered and renumbered. Other hosts, accounts, star and fork, and recommendations now come first (Phases 2 to 5), and the phases below shift to Phases 6 to 10. See `docs/plans/2026-09-21-hosts-accounts-design.md`. The table below is kept as the historical plan.
+
 | Phase | Scope | Notes |
 |---|---|---|
 | **1. Foundations** | Filters and sorting in both apps; curated shelves of exact repos plus the 171-project catalog as shelves; a scriptable CLI | This document |

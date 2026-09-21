@@ -330,19 +330,23 @@ The design and the task-by-task implementation plans are in [`docs/plans/`](docs
 
 ## 🗺️ Roadmap
 
-RepoHub grows in phases. Each phase gets a written design, a task-by-task plan, a fresh implementer for every task, and an independent review (with a security pass for anything that touches untrusted data, URLs, files or processes) before the next task starts. The roadmap and its rationale are in [`docs/plans/2026-09-21-phase1-design.md`](docs/plans/2026-09-21-phase1-design.md).
+RepoHub grows in phases. Each phase gets a written design, a task-by-task plan, a fresh implementer for every task, and an independent review (with a security pass for anything that touches untrusted data, URLs, files or processes) before the next task starts. The current roadmap and its rationale are in [`docs/plans/2026-09-21-hosts-accounts-design.md`](docs/plans/2026-09-21-hosts-accounts-design.md) (which renumbers the earlier list in [`docs/plans/2026-09-21-phase1-design.md`](docs/plans/2026-09-21-phase1-design.md)).
 
 | Phase | What it adds | Status |
 |---|---|---|
 | **v1** | Cross-host search, shelves, repo pages, favorites, safe clone, web app and terminal app | ✅ Done (13 tasks) |
 | **1. Foundations** | Filters and sorting everywhere, curated shelves and the 171-project catalog, the scriptable CLI (v0.2.0) | ✅ Done (13 tasks) |
-| **2. Machine awareness** | "Already cloned" badges, a "Can I run this here?" panel (arm64 release assets, installed toolchains), and a shared project detector | 🔨 Next |
-| **3. Guided install and run** | Shows the exact install and run commands for a cloned repo; you approve each command before it runs, and output streams live | 📝 Planned |
-| **4. Favorites 2.0** | Tags, notes and collections for favorites, and a "new releases" tab | 📝 Planned |
-| **5. Claude Code** | An MCP server (read-only by default), "Open in Claude Code" after cloning, and a `/repohub` skill built on the CLI | 📝 Planned |
-| **6. UI redesign** | A better-looking web app and terminal app, done once the features above exist | 📝 Planned |
+| **2. Other hosts** | A host registry and a Forgejo/Gitea provider: Codeberg built in, plus any Forgejo or Gitea instance you add in a config file | 🔨 Next |
+| **3. Accounts and login** | Uses the sign-ins you already have (env variables, `gh` CLI) and stores nothing; an Accounts page shows who you are on each host, where the token came from, its scopes and rate limit | 📝 Planned |
+| **4. Star and fork** | Star, unstar and fork from the web and terminal apps, always confirmed, with a local action log. The CLI stays read-only | 📝 Planned |
+| **5. Recommendations** | Suggestions from your favorites, your stars, an opt-in local history, and "similar to this repo", all computed on your machine | 📝 Planned |
+| **6. Machine awareness** | "Already cloned" badges, a "Can I run this here?" panel (arm64 release assets, installed toolchains), and a shared project detector | ⏸️ Paused |
+| **7. Guided install and run** | Shows the exact install and run commands for a cloned repo; you approve each command before it runs, and output streams live | 📝 Planned |
+| **8. Favorites 2.0** | Tags, notes and collections for favorites, and a "new releases" tab | 📝 Planned |
+| **9. Claude Code** | An MCP server (read-only by default), "Open in Claude Code" after cloning, and a `/repohub` skill built on the CLI | 📝 Planned |
+| **10. UI redesign** | A better-looking web app and terminal app, done once the features above exist | 📝 Planned |
 
-Standing rules for every phase: the existing clone protections stay as they are, and running a repository's own code (Phase 3) is always a separate, explicit, opt-in action that shows exactly what it will run.
+Standing rules for every phase: the existing clone protections stay as they are; running a repository's own code (Phase 7) is always a separate, explicit, opt-in action that shows exactly what it will run; and actions that change your accounts (Phase 4) are always confirmed and never run from the CLI.
 
 <details>
 <summary><b>Tasks: v1 (all done)</b></summary>
@@ -385,11 +389,15 @@ Standing rules for every phase: the existing clone protections stay as they are,
 <details>
 <summary><b>Sketch of the next phases</b> (each phase's real task list is written in its own plan)</summary>
 
-- **Phase 2, machine awareness:** a project detector (Cargo.toml, pyproject or requirements, package.json, Makefile, Dockerfile); a toolchain check (cargo, uv, node, go and similar); a "can I run this here?" verdict combining arm64 assets and installed tools; a scan of your clone folder for "already cloned" badges in the web app, the terminal app and the CLI.
-- **Phase 3, guided install and run:** proposing commands from the detector; an approval step for every command in the web and terminal apps; a runner confined to the cloned folder that streams output; strict review because it runs the repository's own code.
-- **Phase 4, favorites 2.0:** storage for tags, notes and collections; editing and filtering in every interface; a "new releases" view built on the existing release fetching.
-- **Phase 5, Claude Code:** a read-only MCP server (search, read READMEs and releases, list favorites); an "Open in Claude Code" action after cloning; a `/repohub` skill on top of the CLI; cloning or installing through Claude Code stays a separate, individually approved action.
-- **Phase 6, UI redesign:** a design pass over the web and terminal apps, with fresh screenshots.
+- **Phase 2, other hosts:** a host registry replacing the hard-coded GitHub and GitLab pair; a Forgejo/Gitea provider (search, README, releases); Codeberg built in; extra instances in `~/.config/repohub/hosts.yaml` with strict URL validation; search, shelves, favorites, the CLI and the clone allow-list all reading the registry.
+- **Phase 3, accounts and login:** token discovery per host; identity, scope and rate-limit lookups; an Accounts page in the web app, a key in the terminal app and a read-only `repohub accounts` command; nothing stored on disk.
+- **Phase 4, star and fork:** star, unstar and fork for GitHub, GitLab and Forgejo; a confirmation naming the host, repository and account; no automatic retries; a local action log.
+- **Phase 5, recommendations:** an interest profile from favorites, stars and an opt-in history; a "Recommended for you" shelf, "Similar repositories" on repo pages, and read-only `repohub recommend` and `repohub similar` commands; every suggestion explains why.
+- **Phase 6, machine awareness:** a project detector (Cargo.toml, pyproject or requirements, package.json, Makefile, Dockerfile); a toolchain check; a "can I run this here?" panel; "already cloned" badges from a scan of your clone folder only.
+- **Phase 7, guided install and run:** proposing commands from the detector; an approval step for every command; a runner confined to the cloned folder that streams output; strict review because it runs the repository's own code.
+- **Phase 8, favorites 2.0:** storage for tags, notes and collections; editing and filtering in every interface; a "new releases" view.
+- **Phase 9, Claude Code:** a read-only MCP server; an "Open in Claude Code" action after cloning; a `/repohub` skill on top of the CLI; cloning or installing through Claude Code stays a separate, individually approved action.
+- **Phase 10, UI redesign:** a design pass over the web and terminal apps, with fresh screenshots.
 
 </details>
 
@@ -405,7 +413,7 @@ Standing rules for every phase: the existing clone protections stay as they are,
 - GitLab cannot sort by forks or hide forks server-side, so those options only apply to the results that were fetched.
 - Remote images in READMEs can load in the web app (the CSP allows `img-src *`), which shows your IP address to those hosts.
 - The cache is never purged; expired entries are only overwritten.
-- Not included yet: accounts or login flows, starring or forking from inside the app, other hosts (Codeberg, Bitbucket), and recommendations. See the [roadmap](#-roadmap) for what is planned.
+- Not included yet: other hosts (Codeberg and other Forgejo or Gitea servers are Phase 2; Bitbucket is not planned), accounts and login, starring or forking from inside the app, and recommendations. See the [roadmap](#-roadmap) for what is planned.
 
 ## 📜 License
 
