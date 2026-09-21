@@ -13,10 +13,12 @@ import json
 import sys
 from typing import Callable, TextIO
 
+from repohub.core.auth import find_host_tokens
 from repohub.core.browse import Shelf, load_all_shelves
 from repohub.core.hosts import registry
+from repohub.core.hostsconfig import configure_hosts
 from repohub.core.models import MAX_DAYS, MAX_STARS, SORTS, Repo, SearchFilters
-from repohub.core.providers.base import NotFound, ProviderError, valid_slug
+from repohub.core.providers.base import NotFound, ProviderError
 from repohub.core.queryparse import parse_query
 from repohub.core.textsafe import clean_text
 
@@ -48,7 +50,7 @@ def _version() -> str:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="repohub", description="Search GitHub and GitLab repositories (read-only).")
+    p = argparse.ArgumentParser(prog="repohub", description="Search repositories on GitHub, GitLab, Codeberg and configured hosts (read-only).")
     p.add_argument("--version", action="version", version=_version())
     sub = p.add_subparsers(dest="command", required=True, metavar="COMMAND")
 
@@ -60,7 +62,10 @@ def _build_parser() -> argparse.ArgumentParser:
     s.add_argument("--min-stars", type=_bounded(0, MAX_STARS), default=0, metavar="N")
     s.add_argument("--days", type=_bounded(0, MAX_DAYS), default=None, metavar="N",
                    help="only repositories pushed within N days")
-    s.add_argument("--host", choices=("github", "gitlab", "both"), default=None)
+    # Not argparse `choices`: the valid ids depend on hosts.yaml, which is read only after parsing
+    # (so --help, --version and usage errors never touch the file). Checked in _check_host.
+    s.add_argument("--host", default=None, metavar="HOST",
+                   help="both, all, or a configured host id (see 'repohub hosts')")
     s.add_argument("--sort", choices=SORTS, default=None)
     s.add_argument("--no-forks", action="store_true")
     s.add_argument("--archived", action="store_true", help="include archived repositories")
@@ -85,7 +90,17 @@ def _build_parser() -> argparse.ArgumentParser:
 
     fv = sub.add_parser("favorites", help="list stored favorites (no network)")
     fv.add_argument("--json", action="store_true")
+
+    ho = sub.add_parser("hosts", help="list configured hosts (no network)",
+                        description="List configured hosts and whether a token is present. "
+                                    "Token values are never shown.")
+    ho.add_argument("--json", action="store_true")
     return p
+
+
+def _check_host(parser: argparse.ArgumentParser, value: str | None) -> None:
+    if value is not None and value not in ("both", "all") and value not in registry().ids:
+        parser.error("argument --host: not a configured host (see 'repohub hosts')")  # never echo input
 
 
 # ---------------------------------------------------------------- formatting
@@ -191,7 +206,7 @@ def _emit_list(o: _Out, as_json: bool, repos: list[Repo], errors: dict[str, str]
 def _cmd_search(args, hub, o: _Out) -> int:
     base = SearchFilters(language=args.lang, min_stars=args.min_stars,
                          updated_within_days=args.days or None,
-                         hosts=registry().ids if args.host in (None, "both") else (args.host,),
+                         hosts=SearchFilters().hosts if args.host in (None, "both", "all") else (args.host,),
                          include_archived=args.archived, sort=args.sort or "stars",
                          hide_forks=args.no_forks)
     parsed = parse_query(" ".join(args.text), base)
@@ -202,7 +217,7 @@ def _cmd_search(args, hub, o: _Out) -> int:
 
 def _valid_repo_arg(value: str) -> tuple[str, str] | None:
     host, sep, slug = value.partition(":")
-    if not sep or host not in registry().ids or len(slug) > 200 or not valid_slug(slug, host):
+    if not sep or len(slug) > 200 or not registry().slug_ok(host, slug):
         return None
     return host, slug
 
@@ -210,7 +225,7 @@ def _valid_repo_arg(value: str) -> tuple[str, str] | None:
 def _cmd_repo(args, hub, o: _Out) -> int:
     parsed = _valid_repo_arg(args.repo)
     if parsed is None:
-        o.err("error: repository must look like github:owner/name or gitlab:group/name")
+        o.err("error: repository must look like HOST:OWNER/NAME with a configured host (see 'repohub hosts')")
         return EXIT_USAGE
     host, slug = parsed
     try:
@@ -311,19 +326,50 @@ def _cmd_favorites(args, hub, o: _Out) -> int:
     return _emit_list(o, args.json, hub.favorites.list(), {}, False)
 
 
+def _cmd_hosts(args, hub, o: _Out, problems: list[str] | None = None, gh_cli: Callable | None = None) -> int:
+    reg = registry()
+    kw = {"gh_cli": gh_cli} if gh_cli is not None else {}
+    tokens = find_host_tokens(reg, **kw)
+    # token_env lists variable NAMES (not secrets) so the user knows what to set; values never leave HostTokens.
+    entries = [{"id": _cell(h.id), "kind": _cell(h.kind), "name": _cell(h.name), "domain": _cell(h.domain),
+                "builtin": bool(h.builtin), "token": tokens.has(h.id),
+                "token_env": [_cell(v) for v in h.token_env]} for h in reg.specs]
+    shown = [_msg(p) for p in list(problems or [])[:MAX_PROBLEMS_SHOWN]]
+    for p in shown:
+        o.err(f"warning: {p}")
+    if args.json:
+        o.json({"schema_version": SCHEMA_VERSION, "hosts": entries, "problems": shown})
+    else:
+        o.out(_table(["id", "kind", "name", "domain", "builtin", "token"],
+                     [[e["id"], e["kind"], e["name"], e["domain"], "yes" if e["builtin"] else "no",
+                       "yes" if e["token"] else "no"] for e in entries]))
+    return EXIT_OK
+
+
 _COMMANDS = {"search": _cmd_search, "repo": _cmd_repo, "shelves": _cmd_shelves,
              "shelf": _cmd_shelf, "favorites": _cmd_favorites}
 
 
 def main(argv: list[str] | None = None, *, hub_factory: Callable | None = None,
-         stdout: TextIO | None = None, stderr: TextIO | None = None) -> int:
+         stdout: TextIO | None = None, stderr: TextIO | None = None,
+         gh_cli: Callable | None = None) -> int:
     stdout = stdout if stdout is not None else sys.stdout
     stderr = stderr if stderr is not None else sys.stderr
     # Parse first: --help/--version and usage errors must not build a hub or read tokens.
+    parser = _build_parser()
     with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-        args = _build_parser().parse_args(argv)  # exits (SystemExit) on --help/--version/usage error
+        args = parser.parse_args(argv)  # exits (SystemExit) on --help/--version/usage error
     o = _Out(stdout, stderr)
     try:
+        # Only now is the (small) hosts file read: the registry it defines is needed by --host,
+        # repo validation and hosts. build_hub() configures again from the same file, which yields
+        # an equal registry. This builds no providers, opens no database and uses no network.
+        host_problems = configure_hosts()
+        if args.command == "search":
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                _check_host(parser, args.host)  # exits 2 on an unknown host
+        if args.command == "hosts":
+            return _cmd_hosts(args, None, o, host_problems, gh_cli)
         if args.command == "repo" and _valid_repo_arg(args.repo) is None:
             return _cmd_repo(args, None, o)  # rejected before any hub is built
         if hub_factory is None:

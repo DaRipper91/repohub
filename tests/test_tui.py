@@ -678,3 +678,105 @@ async def test_load_all_shelves_used_by_default_and_problems_shown(tmp_path, mon
         status = text_of(app.query_one("#status", Static))
         assert "2 shelf file problem(s): bad [/] file" in status
         assert app.query_one(DataTable).row_count == 1
+
+
+# ---- Phase 2: codeberg and extra hosts -----------------------------------------------------------
+
+def make_cb_app(tmp_path, cloner=None, hub=None):
+    cb = FakeProvider("codeberg", [mk("codeberg", "o/r", 7)])
+    hub = hub or make_hub(cb)
+    return RepoHubApp(hub, tmp_path, shelves=[Shelf("T", topic="tui")],
+                      cloner=cloner or (lambda url, root: tmp_path / "r")), hub
+
+
+async def test_codeberg_detail_favorite_and_clone(tmp_path):
+    calls = []
+    app, hub = make_cb_app(tmp_path, cloner=lambda url, root: calls.append(url) or tmp_path / "r")
+    async with app.run_test() as pilot:
+        await type_query(app, pilot, "tui host:codeberg")
+        await settle(app, pilot)
+        assert app.query_one(DataTable).row_count == 1
+        app.query_one(DataTable).focus()
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert isinstance(app.screen, DetailScreen) and app.screen.detail.repo.host == "codeberg"
+        await pilot.press("f")
+        await pilot.pause()
+        assert hub.favorites.is_favorite("codeberg:o/r")
+        await pilot.press("c")
+        await pilot.pause()
+        await pilot.press("y")
+        await settle(app, pilot)
+        assert calls == ["https://codeberg.org/o/r.git"]
+
+
+async def test_extra_host_rows_work(tmp_path):
+    from repohub.core.hosts import BUILTIN_HOSTS, HostRegistry, HostSpec, set_registry
+
+    set_registry(HostRegistry(BUILTIN_HOSTS + (
+        HostSpec("myforge", "forgejo", "MyForge", "git.example.org", "https://git.example.org/api/v1",
+                 ("REPOHUB_MYFORGE_TOKEN",), False),)))
+    calls = []
+    hub = make_hub(FakeProvider("myforge", [mk("myforge", "o/r")]))
+    app, _ = make_cb_app(tmp_path, cloner=lambda url, root: calls.append(url) or tmp_path / "r", hub=hub)
+    async with app.run_test() as pilot:
+        await type_query(app, pilot, "tui")
+        await settle(app, pilot)
+        app.query_one(DataTable).focus()
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert app.screen.detail.repo.host == "myforge"
+        await pilot.press("c")
+        await pilot.pause()
+        await pilot.press("y")
+        await settle(app, pilot)
+        assert calls == ["https://git.example.org/o/r.git"]
+
+
+async def test_favorite_row_of_unconfigured_host_shows_clean_error(tmp_path):
+    from repohub.core.models import Repo
+
+    hub = make_hub(FakeProvider("github"))
+    hub.favorites.add(mk("gone", "o/r"))
+    app, _ = make_cb_app(tmp_path, hub=hub)
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+f")
+        await settle(app, pilot)
+        assert app.query_one(DataTable).row_count == 1
+        app.query_one(DataTable).focus()
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert isinstance(app.screen, DetailScreen) and app.screen.detail is None
+        assert "unknown host" in text_of(app.screen.query_one("#meta", Static))
+        await pilot.press("c")
+        await pilot.pause()
+        assert app.is_running and not isinstance(app.screen, type(None))
+
+
+async def test_host_problems_shown_plain_on_shelf_list(tmp_path):
+    hostile = "hosts file: bad\x1b[31m [/] [@click=app.quit]x[/] \u202e " + "z" * 500
+    hub = make_hub(FakeProvider("github"))
+    hub.host_problems = [hostile, "second"]
+    app, _ = make_cb_app(tmp_path, hub=hub)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        status = text_of(app.query_one("#status", Static))
+        assert app.is_running
+        assert "2 host problem(s)" in status and "[@click=app.quit]x[/]" in status
+        assert "\x1b" not in status and "\u202e" not in status
+        assert len(status) < 500
+        await pilot.press("enter")  # keys still work; the app was not quit by the markup
+        await pilot.pause()
+        assert app.is_running
+
+
+async def test_host_problems_sit_next_to_shelf_problems(tmp_path, monkeypatch):
+    shelf = Shelf(name="S", repos=_cur_entries(1), as_of="2026-09-01")
+    monkeypatch.setattr("repohub.tui.app.load_all_shelves", lambda: LoadedShelves([shelf], ["shelf bad"]))
+    hub = make_hub(FakeProvider("github"))
+    hub.host_problems = ["host bad"]
+    app = RepoHubApp(hub, tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        status = text_of(app.query_one("#status", Static))
+        assert "shelf bad" in status and "host bad" in status

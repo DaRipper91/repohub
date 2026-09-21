@@ -13,9 +13,11 @@ from repohub.core.browse import load_all_shelves
 from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_clone
 from repohub.core.providers.base import ProviderError
 from repohub.core.queryparse import parse_query
+from repohub.core.textsafe import clean_text
 
 
 PAGE = 25
+MAX_HOST_PROBLEM = 160  # characters of the first host problem shown in the status line
 
 
 class ConfirmClone(ModalScreen[bool]):
@@ -173,6 +175,10 @@ class RepoHubApp(App):
         status = "Shelves. Press Enter on one, or type a search above."
         if self.shelf_problems:
             status += f"  {len(self.shelf_problems)} shelf file problem(s): {self.shelf_problems[0]}"
+        host_problems = list(getattr(self.hub, "host_problems", None) or [])
+        if host_problems:
+            first = clean_text(str(host_problems[0]))[:MAX_HOST_PROBLEM]
+            status += f"  {len(host_problems)} host problem(s): {first}"
         self._status(status)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:

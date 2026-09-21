@@ -23,8 +23,18 @@ def run(argv, hub=None, **kw):
             raise AssertionError("hub_factory must not be called")
         return hub
 
-    code = cli.main(argv, hub_factory=factory, stdout=out, stderr=err)
+    kw.setdefault("gh_cli", lambda: None)  # never run the real gh CLI
+    code = cli.main(argv, hub_factory=factory, stdout=out, stderr=err, **kw)
     return code, out.getvalue(), err.getvalue()
+
+
+@pytest.fixture(autouse=True)
+def config_dir(monkeypatch, tmp_path):
+    """Never read the real user config dir (hosts.yaml)."""
+    cfg = tmp_path / "xdg-config"
+    cfg.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(cfg))
+    return cfg
 
 
 @pytest.fixture(autouse=True)
@@ -335,3 +345,151 @@ def test_search_limit_help_mentions_per_host_cap(capsys):
     with pytest.raises(SystemExit):
         cli.main(["search", "--help"])
     assert "30 results per request" in " ".join(capsys.readouterr().out.split())
+
+
+# ---- Phase 2: every registered host ------------------------------------------------------------
+
+HOSTILE = "bad\x1b[31m \x9b \u202e [/] [@click=app.quit]x[/]"
+
+
+def write_hosts(cfg, text):
+    d = cfg / "repohub"
+    d.mkdir(exist_ok=True)
+    (d / "hosts.yaml").write_text(text, encoding="utf-8")
+
+
+def test_host_codeberg_maps_to_filters():
+    cb = FakeProvider("codeberg", [mk("codeberg", "o/r")])
+    g = gh()
+    code, out, err = run(["search", "tui", "--host", "codeberg"], make_hub(g, cb))
+    assert code == 0 and cb.last_filters.hosts == ("codeberg",) and g.calls == 0
+
+
+def test_default_and_both_and_all_follow_registry():
+    from repohub.core.models import SearchFilters
+
+    for extra in ([], ["--host", "both"], ["--host", "all"]):
+        g = gh()
+        run(["search", "tui", *extra], make_hub(g))
+        assert g.last_filters.hosts == SearchFilters().hosts == ("github", "gitlab", "codeberg")
+
+
+def test_unknown_host_flag_exits_2_without_echo(capsys):
+    with pytest.raises(SystemExit) as e:
+        run(["search", "tui", "--host", "nowhere\x1b[31m"])
+    assert e.value.code == 2
+    err = capsys.readouterr().err
+    assert "\x1b" not in err
+
+
+def test_extra_host_is_accepted_by_host_flag(config_dir):
+    write_hosts(config_dir, "- {id: myforge, kind: forgejo, url: https://git.example.org}\n")
+    mf = FakeProvider("myforge", [mk("myforge", "o/r")])
+    code, _, _ = run(["search", "tui", "--host", "myforge"], make_hub(mf))
+    assert code == 0 and mf.last_filters.hosts == ("myforge",)
+
+
+def test_repo_codeberg_json_with_fake_hub():
+    hub = make_hub(FakeProvider("codeberg", [mk("codeberg", "o/r")]))
+    code, out, err = run(["repo", "codeberg:o/r", "--json"], hub)
+    doc = json.loads(out)
+    assert code == 0 and err == "" and doc["repo"]["host"] == "codeberg"
+
+
+@pytest.mark.parametrize("arg", ["nowhere:o/r", "codeberg:o/r/x", "codeberg:o", "nowhere\x1b[31m:o/r"])
+def test_repo_bad_host_or_slug_exits_2_before_hub(arg):
+    code, out, err = run(["repo", arg])  # the factory raises AssertionError if called
+    assert code == 2 and out == "" and err and "\x1b" not in err
+
+
+def test_repo_extra_host_from_file(config_dir):
+    write_hosts(config_dir, "- {id: myforge, kind: forgejo, url: https://git.example.org}\n")
+    hub = make_hub(FakeProvider("myforge", [mk("myforge", "o/r")]))
+    code, out, _ = run(["repo", "myforge:o/r", "--json"], hub)
+    assert code == 0 and json.loads(out)["repo"]["host"] == "myforge"
+
+
+def test_hosts_json_shape_and_tokens_are_booleans(monkeypatch):
+    monkeypatch.setenv("CODEBERG_TOKEN", TOKEN)
+    code, out, err = run(["hosts", "--json"])  # no hub, no network
+    doc = json.loads(out)
+    assert code == 0 and doc["schema_version"] == 1 and doc["problems"] == []
+    by_id = {h["id"]: h for h in doc["hosts"]}
+    assert list(by_id) == ["github", "gitlab", "codeberg"]
+    for h in by_id.values():
+        assert set(h) == {"id", "kind", "name", "domain", "builtin", "token", "token_env"}
+        assert h["builtin"] is True and isinstance(h["token"], bool)
+    assert by_id["codeberg"]["kind"] == "forgejo" and by_id["codeberg"]["domain"] == "codeberg.org"
+    assert by_id["codeberg"]["token"] is True and by_id["github"]["token"] is True
+    assert by_id["codeberg"]["token_env"] == ["CODEBERG_TOKEN"]
+    assert TOKEN not in out and TOKEN not in err
+
+
+def test_hosts_token_false_when_absent(monkeypatch):
+    for v in ("GITHUB_TOKEN", "GH_TOKEN", "GITLAB_TOKEN", "CODEBERG_TOKEN"):
+        monkeypatch.delenv(v, raising=False)
+    code, out, _ = run(["hosts", "--json"])
+    assert [h["token"] for h in json.loads(out)["hosts"]] == [False, False, False]
+
+
+def test_hosts_uses_injected_gh_cli_fallback(monkeypatch):
+    for v in ("GITHUB_TOKEN", "GH_TOKEN"):
+        monkeypatch.delenv(v, raising=False)
+    code, out, err = run(["hosts", "--json"], gh_cli=lambda: "ghp_FROMCLI_SECRET")
+    assert json.loads(out)["hosts"][0]["token"] is True
+    assert "ghp_FROMCLI_SECRET" not in out + err
+
+
+def test_hosts_extra_host_not_builtin(config_dir, monkeypatch):
+    write_hosts(config_dir, "- {id: myforge, kind: forgejo, url: https://git.example.org}\n")
+    monkeypatch.setenv("REPOHUB_MYFORGE_TOKEN", "sekrit-forge-value")
+    code, out, err = run(["hosts", "--json"])
+    doc = json.loads(out)
+    mf = next(h for h in doc["hosts"] if h["id"] == "myforge")
+    assert mf["builtin"] is False and mf["kind"] == "forgejo" and mf["domain"] == "git.example.org"
+    assert mf["token"] is True and mf["token_env"] == ["REPOHUB_MYFORGE_TOKEN"]
+    assert "sekrit-forge-value" not in out + err
+    code, out, err = run(["hosts"])
+    assert "myforge" in out and "sekrit-forge-value" not in out + err
+
+
+def test_hosts_broken_file_warns_on_stderr_and_lists_builtins(config_dir):
+    write_hosts(config_dir, "- {id: [unclosed\n")
+    code, out, err = run(["hosts", "--json"])
+    doc = json.loads(out)
+    assert code == 0 and [h["id"] for h in doc["hosts"]] == ["github", "gitlab", "codeberg"]
+    assert doc["problems"] and err.startswith("warning: ")
+    code, out, err = run(["hosts"])
+    assert "codeberg" in out and err.startswith("warning: ")
+
+
+def test_hosts_hostile_problem_text_is_sanitised(monkeypatch):
+    monkeypatch.setattr(cli, "configure_hosts", lambda *a, **k: [HOSTILE])
+    code, out, err = run(["hosts", "--json"])
+    assert code == 0
+    for text in (out, err):
+        assert not CONTROL.search(text.replace("\n", "")) and "\u202e" not in text
+    assert json.loads(out)["problems"]
+    assert err.startswith("warning: ")
+
+
+def test_hosts_needs_no_hub_and_help_reads_no_file(monkeypatch, capsys):
+    calls = []
+    monkeypatch.setattr(cli, "configure_hosts", lambda *a, **k: calls.append(1) or [])
+    for argv in (["--help"], ["--version"], ["hosts", "--help"], ["search", "--help"], ["search", "x", "--limit", "0"]):
+        with pytest.raises(SystemExit):
+            run(argv)
+    assert calls == []
+    capsys.readouterr()
+
+
+def test_tokens_from_env_never_reach_any_output(monkeypatch, shelves, config_dir):
+    write_hosts(config_dir, "- {id: myforge, kind: forgejo, url: https://git.example.org}\n")
+    secret = "SECRET-VALUE-12345"
+    for v in ("GITHUB_TOKEN", "CODEBERG_TOKEN", "REPOHUB_MYFORGE_TOKEN"):
+        monkeypatch.setenv(v, secret)
+    hub = make_hub(gh(), FakeProvider("codeberg", [mk("codeberg", "o/r")]))
+    for argv in (["hosts"], ["hosts", "--json"], ["search", "x", "--json"], ["repo", "codeberg:o/r"],
+                 ["repo", "nowhere:o/r"], ["shelves"]):
+        code, out, err = run(argv, hub)
+        assert secret not in out and secret not in err
