@@ -340,11 +340,25 @@ class DetailScreen(Screen):
 
 class RepoHubApp(App):
     TITLE = "RepoHub"
+    # One look in both themes: colors come from the theme variables, never from fixed values.
+    CSS = """
+    ConfirmClone, ConfirmWrite { align: center middle; }
+    ConfirmClone > Static, ConfirmWrite > Static {
+        width: 76; max-width: 95%; height: auto; padding: 1 2; border: round $primary; background: $panel;
+    }
+    #q { margin: 0 0 1 0; }
+    #status { color: $text-muted; padding: 0 1; height: auto; }
+    DataTable { height: 1fr; }
+    DataTable > .datatable--header { text-style: bold; background: $panel; }
+    #meta { padding: 1 2; height: auto; }
+    #info { padding: 0 1 1 1; height: auto; color: $text-muted; }
+    #log { padding: 1 2; height: auto; border-top: solid $primary; }
+    """
     BINDINGS = [Binding("ctrl+f", "favorites", "Favorites"), Binding("escape", "home", "Shelves"),
                 Binding("]", "next_page", "Next page"), Binding("[", "prev_page", "Prev page"),
                 Binding("d", "remove_favorite", "Remove favorite"), Binding("r", "releases", "New releases", show=False),
                 Binding("m", "mark_seen", "Mark seen", show=False), Binding("f2", "accounts", "Accounts"), Binding("f3", "history", "History on/off"),
-                Binding("f4", "clear_history", "Clear history"), Binding("f5", "folders", "Folders"), Binding("f6", "guided", "Guided install on/off"),
+                Binding("f4", "clear_history", "Clear history"), Binding("f5", "folders", "Folders"), Binding("f6", "guided", "Guided install on/off"), Binding("f7", "theme", "Light/dark", priority=True),
                 Binding("s", "scan_home", "Scan home", show=False), Binding("w", "scan_system", "Scan all", show=False), Binding("a", "accounts", "Accounts", show=False)]
 
     def __init__(self, hub, clone_root, shelves=None, cloner=do_clone, awareness=None, roots=None, runner=None,
@@ -360,6 +374,7 @@ class RepoHubApp(App):
             launcher = subprocess.run
         self.launcher = launcher
         self.runner = runner if runner is not None else Runner(self.awareness, Settings(), hub.actions)
+        self.theme = "textual-light" if self._saved_theme() == "light" else "textual-dark"
         if shelves is None:
             loaded = load_all_shelves()
             self.shelves, self.shelf_problems = loaded.shelves, list(loaded.problems)
@@ -476,6 +491,22 @@ class RepoHubApp(App):
             notes.append("No suggestions found.")
         notes += [f"{h}: {m}" for h, m in result.errors.items()]
         self._status("  ".join(notes))
+
+    def _saved_theme(self) -> str:
+        try:
+            return self.runner.settings.get_theme()
+        except Exception:
+            return "dark"
+
+    def action_theme(self) -> None:
+        """Switch between the dark and light theme; the choice is remembered."""
+        light = self.theme != "textual-light"
+        self.theme = "textual-light" if light else "textual-dark"
+        try:
+            self.runner.settings.set_theme("light" if light else "dark")
+        except Exception:
+            pass  # not remembered, still switched
+        self.notify("Light theme" if light else "Dark theme", markup=False)
 
     def action_guided(self) -> None:
         if self.runner.enabled:

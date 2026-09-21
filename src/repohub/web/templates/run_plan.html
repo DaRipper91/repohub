@@ -8,7 +8,7 @@
   <p>Guided install is <strong>off</strong>. It is a separate switch from cloning: RepoHub will only ever propose fixed, standard build commands for the project type it detects, and run one only after you approve that exact command.</p>
   <form method="post" action="/runsetting">
     <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="host" value="{{ host }}"><input type="hidden" name="slug" value="{{ slug }}">
-    <button name="action" value="on">Turn guided install on</button>
+    <button name="action" value="on" class="primary">Turn guided install on</button>
   </form>
 {% else %}
   <p>Folder: <code>{{ clone.path }}</code></p>
@@ -20,7 +20,7 @@
       <form method="post" action="/runstart" class="inline">
         <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="host" value="{{ host }}"><input type="hidden" name="slug" value="{{ slug }}">
         <input type="hidden" name="step" value="{{ st.id }}"><input type="hidden" name="digest" value="{{ plan.digest }}">
-        <button {% if current %}disabled{% endif %}>Approve and run this command</button>
+        <button class="primary" {% if current %}disabled{% endif %}>Approve and run this command</button>
       </form></li>
   {% endfor %}
   </ol>
@@ -28,7 +28,7 @@
   {% else %}<p class="dim">RepoHub does not know a standard build command for this project (Docker, Java and Ruby projects are not proposed). Read its README instead.</p>{% endif %}
   <form method="post" action="/runsetting" class="inline">
     <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="host" value="{{ host }}"><input type="hidden" name="slug" value="{{ slug }}">
-    <button name="action" value="off">Turn guided install off</button>
+    <button name="action" value="off" class="danger">Turn guided install off</button>
   </form>
 {% endif %}
 <p><a href="/repo/{{ host }}/{{ slug }}">Back to the repository</a></p>

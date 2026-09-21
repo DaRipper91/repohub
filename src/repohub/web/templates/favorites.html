@@ -12,7 +12,7 @@
 <details><summary>Collections</summary>
   <ul>{% for c, n in collections %}<li>{{ c }} ({{ n }})
     <form method="post" action="/favorites/collection" class="inline" hx-boost="true" hx-confirm="Delete this collection? The repositories stay in your favorites.">
-      <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="name" value="{{ c }}"><button name="action" value="delete">Delete</button></form></li>
+      <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="name" value="{{ c }}"><button name="action" value="delete" class="danger">Delete</button></form></li>
   {% else %}<li class="dim">None yet.</li>{% endfor %}</ul>
   <form method="post" action="/favorites/collection" class="inline"><input type="hidden" name="token" value="{{ token }}">
     <input name="name" placeholder="New collection" maxlength="40" aria-label="New collection name"><button name="action" value="create">Create</button></form>
@@ -42,7 +42,7 @@
   <form hx-post="/favorite" hx-target="closest .card" hx-swap="outerHTML">
     <input type="hidden" name="host" value="{{ r.host }}"><input type="hidden" name="slug" value="{{ r.slug }}">
     <input type="hidden" name="token" value="{{ token }}">
-    <button>Remove</button>
+    <button class="danger">Remove</button>
   </form></div>
 {% endif %}
 {% else %}<p class="dim">{% if f_tag or f_collection or f_q %}No favorites match.{% else %}No favorites yet.{% endif %}</p>{% endfor %}

@@ -10,7 +10,7 @@
 <form hx-post="/{{ 'fork' if action == 'fork' else 'star' }}" hx-target="#result" hx-swap="innerHTML" hx-disabled-elt="find button">
   <input type="hidden" name="host" value="{{ host }}"><input type="hidden" name="slug" value="{{ slug }}">
   <input type="hidden" name="action" value="{{ action }}"><input type="hidden" name="token" value="{{ token }}">
-  <button>Confirm {{ action }}</button> <a class="button" href="/repo/{{ host }}/{{ slug }}">Cancel</a>
+  <button class="primary">Confirm {{ action }}</button> <a class="button" href="/repo/{{ host }}/{{ slug }}">Cancel</a>
 </form>
 <div id="result"></div>
 {% endblock %}

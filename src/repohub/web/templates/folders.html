@@ -7,7 +7,7 @@
   <li><code>{{ default }}</code> <span class="dim">(clone folder, set by REPOHUB_CLONE_DIR)</span></li>
   {% for r in roots %}<li><code>{{ r }}</code>
     <form method="post" action="/folders/remove" class="inline" hx-boost="true" hx-confirm="Stop looking in this folder?">
-      <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="path" value="{{ r }}"><button>Remove</button></form></li>{% endfor %}
+      <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="path" value="{{ r }}"><button class="danger">Remove</button></form></li>{% endfor %}
 </ul>
 <h3>Find more</h3>
 <form method="post" action="/folders/scan" class="inline" hx-disabled-elt="find button">
@@ -29,7 +29,7 @@
         <code>{{ c.path }}</code> — {{ c.repos }} repositor{{ "y" if c.repos == 1 else "ies" }}{% if c.examples %} <span class="dim">({{ c.examples | join(", ") }}{% if c.repos > c.examples | length %}, …{% endif %})</span>{% endif %}{% if used %} <span class="dim">already in use</span>{% endif %}</label></li>
     {% endfor %}
     </ul>
-    <button>Use the selected folders</button>
+    <button class="primary">Use the selected folders</button>
   </form>
   {% else %}<p class="dim">No clones from a configured host were found.</p>{% endif %}
 {% endif %}

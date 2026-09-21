@@ -54,8 +54,8 @@ def test_search_form_has_labelled_numeric_filters_and_no_bare_zeros(setup):
 
 def test_repo_page_layout_lets_the_sidebar_shrink(setup):
     client, *_ = setup
-    css = client.get("/static/app.css").text
-    assert "minmax(0,1fr)" in css and ".layout>*{min-width:0}" in css
+    css = "".join(client.get("/static/app.css").text.split())  # ignore formatting
+    assert "minmax(0,1fr)" in css and ".layout>*{min-width:0;}" in css
 
 
 def test_search_rejects_bad_host(setup):

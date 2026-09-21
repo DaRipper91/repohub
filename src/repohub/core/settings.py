@@ -30,3 +30,19 @@ class Settings:
             self._db.execute("INSERT INTO settings (name, value) VALUES (?, ?) "
                              "ON CONFLICT(name) DO UPDATE SET value = excluded.value", (name, "on" if on else "off"))
             self._db.commit()
+
+    THEMES = ("dark", "light")
+
+    def get_theme(self) -> str:
+        """The terminal app's theme: "dark" unless "light" was chosen."""
+        with self._lock:
+            row = self._db.execute("SELECT value FROM settings WHERE name = 'theme'").fetchone()
+        return row[0] if row is not None and row[0] in self.THEMES else "dark"
+
+    def set_theme(self, theme: str) -> None:
+        if theme not in self.THEMES:
+            raise ValueError("unknown theme")
+        with self._lock:
+            self._db.execute("INSERT INTO settings (name, value) VALUES ('theme', ?) "
+                             "ON CONFLICT(name) DO UPDATE SET value = excluded.value", (theme,))
+            self._db.commit()

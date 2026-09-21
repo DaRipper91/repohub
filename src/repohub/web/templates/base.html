@@ -2,32 +2,54 @@
 <html lang="en">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>{% block title %}RepoHub{% endblock %}</title>
+  <script src="/static/theme.js"></script>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>
 <body>
-<header>
-  <a class="brand" href="/">🌌 RepoHub</a>
-  <form action="/search" method="get" class="searchbar">
-    <input name="q" value="{{ q | default('') }}" placeholder="Search repositories" aria-label="Search" autofocus>
-    <input name="language" value="{{ form.language | default('') }}" placeholder="language" aria-label="Language" size="9">
-    <input name="min_stars" type="number" min="0" value="{{ form.min_stars if form and form.min_stars else '' }}" placeholder="min ★" aria-label="Minimum stars" title="Minimum stars" class="num">
-    <input name="days" type="number" min="0" value="{{ form.days if form and form.days else '' }}" placeholder="days" aria-label="Updated within days" title="Updated within N days (empty = any)" class="num">
-    <select name="host" aria-label="Host">
-      {% set cur = "all" if not form or not form.host or form.host == "both" else form.host %}
-      {% for h in host_ids %}<option value="{{ h }}" {% if cur == h %}selected{% endif %}>{{ h }}</option>{% endfor %}
-    </select>
-    <label><input type="checkbox" name="archived" value="1" {% if form and form.archived %}checked{% endif %}> archived</label>
-    <select name="sort" aria-label="Sort by">
-      {% for s in ["stars", "updated", "forks"] %}<option value="{{ s }}" {% if (form.sort if form and form.sort else "stars") == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
-    </select>
-    <label><input type="checkbox" name="hide_forks" value="1" {% if form and form.hide_forks %}checked{% endif %}> hide forks</label>
-    <button>Search</button>
-  </form>
-  <nav><a href="/favorites">★ Favorites</a> <a href="/accounts">Accounts</a> <a href="/folders">Folders</a></nav>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="bar">
+    <a class="brand" href="/">🌌 RepoHub</a>
+    <nav class="site-nav" aria-label="Main">
+      <a href="/favorites">★ Favorites</a>
+      <a href="/accounts">Accounts</a>
+      <a href="/folders">Folders</a>
+      <label class="theme-switch" for="theme-select">Theme
+        <select id="theme-select" aria-label="Theme">
+          <option value="auto">Auto</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </label>
+    </nav>
+    <form action="/search" method="get" class="searchbar" role="search">
+      <input name="q" value="{{ q | default('') }}" placeholder="Search repositories" aria-label="Search" autofocus>
+      <button class="primary">Search</button>
+      {% set active = form and (form.language or form.min_stars or form.days or form.archived or form.hide_forks or (form.host and form.host not in ("all", "both")) or (form.sort and form.sort != "stars")) %}
+      <details class="filters" {% if active %}open{% endif %}>
+        <summary>Filters</summary>
+        <div class="row">
+          <input name="language" value="{{ form.language | default('') }}" placeholder="language" aria-label="Language" size="9">
+          <input name="min_stars" type="number" min="0" value="{{ form.min_stars if form and form.min_stars else '' }}" placeholder="min ★" aria-label="Minimum stars" title="Minimum stars" class="num">
+          <input name="days" type="number" min="0" value="{{ form.days if form and form.days else '' }}" placeholder="days" aria-label="Updated within days" title="Updated within N days (empty = any)" class="num">
+          <select name="host" aria-label="Host">
+            {% set cur = "all" if not form or not form.host or form.host == "both" else form.host %}
+            {% for h in host_ids %}<option value="{{ h }}" {% if cur == h %}selected{% endif %}>{{ h }}</option>{% endfor %}
+          </select>
+          <select name="sort" aria-label="Sort by">
+            {% for s in ["stars", "updated", "forks"] %}<option value="{{ s }}" {% if (form.sort if form and form.sort else "stars") == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+          </select>
+          <label><input type="checkbox" name="archived" value="1" {% if form and form.archived %}checked{% endif %}> archived</label>
+          <label><input type="checkbox" name="hide_forks" value="1" {% if form and form.hide_forks %}checked{% endif %}> hide forks</label>
+        </div>
+      </details>
+    </form>
+  </div>
 </header>
-<main>{% block body %}{% endblock %}</main>
+<main id="main" tabindex="-1">{% block body %}{% endblock %}</main>
 </body>
 </html>
