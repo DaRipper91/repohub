@@ -108,6 +108,18 @@ def _build_parser() -> argparse.ArgumentParser:
     sm.add_argument("--limit", type=_bounded(1, 8), default=8, metavar="N")
     sm.add_argument("--json", action="store_true")
 
+    cl = sub.add_parser("cloned", help="list repositories already cloned in your clone folder (no network)",
+                        description="Looks only at the immediate subfolders of REPOHUB_CLONE_DIR (default ~/playground) "
+                                    "and reads each one's .git/config for its origin URL.")
+    cl.add_argument("--json", action="store_true")
+
+    ck = sub.add_parser("check", help="can I run this repository here? (read-only advice)",
+                        description="A checklist and verdict for HOST:OWNER/NAME: release builds for this CPU, "
+                                    "build tools on this machine, project type and whether it is already cloned. "
+                                    "Nothing is run.")
+    ck.add_argument("repo", metavar="HOST:OWNER/NAME")
+    ck.add_argument("--json", action="store_true")
+
     ac = sub.add_parser("accounts", help="show who you are signed in as on each host (read-only)",
                         description="For each host: the account, where its token came from (never the token), "
                                     "its scopes and rate limit where the host reports them. "
@@ -401,6 +413,51 @@ def _cmd_similar(args, hub, o: _Out) -> int:
     return _emit_recs(o, args.json, result, extra={"repo": f"{host}:{slug}"})
 
 
+def _awareness():
+    from repohub.config import clone_root
+    from repohub.core.awareness import Awareness
+
+    return Awareness(clone_root())
+
+
+def _cmd_cloned(args, hub, o: _Out) -> int:
+    root = _awareness().cloned(refresh=True)
+    items = sorted(root.values(), key=lambda c: c.key)
+    if args.json:
+        o.json({"schema_version": SCHEMA_VERSION, "cloned": [{"host": _cell(c.host), "slug": _cell(c.slug),
+                                                            "path": _cell(c.path)} for c in items]})
+    elif items:
+        o.out(_table(["repo", "host", "path"], [[_fit(c.slug, 50), _fit(c.host, 20), _fit(c.path, 80)] for c in items]))
+    else:
+        o.err("no cloned repositories found in the clone folder")
+    return EXIT_OK
+
+
+def _cmd_check(args, hub, o: _Out) -> int:
+    parsed = _valid_repo_arg(args.repo)
+    if parsed is None:
+        o.err("error: repository must look like HOST:OWNER/NAME with a configured host (see 'repohub hosts')")
+        return EXIT_USAGE
+    host, slug = parsed
+    try:
+        detail = asyncio.run(hub.detail(host, slug))
+    except NotFound:
+        o.err(f"error: {host}:{_cell(slug)} not found")
+        return EXIT_ERROR
+    except ProviderError as e:
+        o.err(f"error: {_cell(host)}: {_msg(e)}")
+        return EXIT_ERROR
+    v = _awareness().check(detail.repo, detail.release)
+    if args.json:
+        o.json({"schema_version": SCHEMA_VERSION, "repo": f"{host}:{detail.repo.slug}", **v.to_dict()})
+        return EXIT_OK
+    sym = {"ok": "+", "no": "x", "warn": "!", "info": "-"}
+    o.out(f"{_cell(detail.repo.slug)}: {v.level.upper()} - {_cell(v.summary)}")
+    for c in v.checks:
+        o.out(f"  [{sym[c.status]}] {_cell(c.label)}: {_cell(c.detail)}")
+    return EXIT_OK
+
+
 def _rate_text(rate) -> str:
     return f"{rate.remaining}/{rate.limit}" if rate else "unknown"
 
@@ -423,7 +480,8 @@ def _cmd_accounts(args, hub, o: _Out) -> int:
 
 _COMMANDS = {"search": _cmd_search, "repo": _cmd_repo, "shelves": _cmd_shelves,
              "shelf": _cmd_shelf, "favorites": _cmd_favorites, "accounts": _cmd_accounts,
-             "recommend": _cmd_recommend, "similar": _cmd_similar}
+             "recommend": _cmd_recommend, "similar": _cmd_similar,
+             "cloned": _cmd_cloned, "check": _cmd_check}
 
 
 def main(argv: list[str] | None = None, *, hub_factory: Callable | None = None,
@@ -452,7 +510,11 @@ def main(argv: list[str] | None = None, *, hub_factory: Callable | None = None,
         if args.command == "repo" and _valid_repo_arg(args.repo) is None:
             return _cmd_repo(args, None, o)
         if args.command == "similar" and _valid_repo_arg(args.repo) is None:
-            return _cmd_similar(args, None, o)  # rejected before any hub is built
+            return _cmd_similar(args, None, o)
+        if args.command == "check" and _valid_repo_arg(args.repo) is None:
+            return _cmd_check(args, None, o)
+        if args.command == "cloned":
+            return _cmd_cloned(args, None, o)  # no hub, no network  # rejected before any hub is built
         if hub_factory is None:
             from repohub.config import build_hub as hub_factory
         hub = hub_factory() if args.command != "shelves" else None

@@ -16,6 +16,7 @@ from markdown_it import MarkdownIt
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from repohub.core.awareness import Awareness
 from repohub.core.browse import load_all_shelves
 from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_clone
 from repohub.core.hosts import registry
@@ -67,7 +68,8 @@ def _refresh_done(tasks: set):
 
 
 def create_app(hub, clone_root, session_token: str | None = None, shelves=None, cloner=do_clone,
-               allowed_hosts=("127.0.0.1", "localhost")) -> FastAPI:
+               allowed_hosts=("127.0.0.1", "localhost"), awareness: Awareness | None = None) -> FastAPI:
+    aware = awareness if awareness is not None else Awareness(clone_root)
     token = session_token or secrets.token_urlsafe(32)
     if shelves is None:
         loaded = load_all_shelves()
@@ -99,7 +101,7 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
 
     def page(request: Request, name: str, status: int = 200, **ctx):
         host_ids = ["all", *registry().ids]
-        return templates.TemplateResponse(request, name, {"token": token, "form": {}, "q": "", "host_ids": host_ids, **ctx},
+        return templates.TemplateResponse(request, name, {"token": token, "form": {}, "q": "", "host_ids": host_ids, "cloned": aware.cloned(), **ctx},
                                           status_code=status)
 
     @app.exception_handler(StarletteHTTPException)
@@ -177,7 +179,8 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         acct = await hub.account(host)
         starred = await hub.starred(host, slug) if acct.status == "signed in" else None
         return page(request, "repo.html", d=d, readme_html=render_markdown(d.readme) if d.readme else "",
-                    is_fav=hub.favorites.is_favorite(d.repo.key), signed_in=acct.status == "signed in", starred=starred)
+                    is_fav=hub.favorites.is_favorite(d.repo.key), signed_in=acct.status == "signed in", starred=starred,
+                    verdict=aware.check(d.repo, d.release))
 
     @app.get("/recommended", response_class=HTMLResponse)
     async def recommended(request: Request):

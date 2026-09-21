@@ -3,7 +3,7 @@
 {% block body %}
 {% set r = d.repo %}
 <article class="detail">
-  <h1>{{ r.slug }} <span class="badge host-{{ r.host }}">{{ r.host }}</span></h1>
+  <h1>{{ r.slug }} <span class="badge host-{{ r.host }}">{{ r.host }}</span> {% if r.key in cloned %}<span class="badge ok" title="Found in your clone folder">cloned</span>{% endif %}</h1>
   {% if r.archived %}<p class="banner warn">This repository is archived.</p>{% endif %}
   <p>{{ r.description }}</p>
   <p class="meta">★ {{ r.stars }} · ⑂ {{ r.forks }} · {{ r.language or "n/a" }} · {{ r.license or "no license" }} · last push {{ r.pushed_at[:10] }}</p>
@@ -23,6 +23,10 @@
     <aside>
       <h3>Topics</h3><p>{% for t in r.topics %}<span class="tag">{{ t }}</span> {% else %}<span class="dim">none</span>{% endfor %}</p>
       {% if r.homepage.lower().startswith(("http://", "https://")) %}<p><a href="{{ r.homepage }}" rel="noopener noreferrer">Homepage</a></p>{% endif %}
+      <h3>Can I run this here?</h3>
+      <p><strong class="verdict-{{ verdict.level | replace(' ', '-') }}">{{ verdict.level | capitalize }}</strong>: {{ verdict.summary }}</p>
+      <ul class="checks">{% for c in verdict.checks %}<li class="check-{{ c.status }}"><span aria-hidden="true">{{ {"ok": "✓", "no": "✗", "warn": "!", "info": "·"}[c.status] }}</span> <span class="sr">{{ c.status }}:</span> <strong>{{ c.label }}</strong> {{ c.detail }}</li>{% endfor %}</ul>
+      <p class="dim">Advisory only. RepoHub looks for tools on this machine and never runs anything from the repository.</p>
       <h3>Latest release</h3>
       {% if d.release %}
         <p>{{ d.release.tag }} {% if d.release.has_arm64 %}<span class="badge ok">arm64</span>{% endif %}</p>

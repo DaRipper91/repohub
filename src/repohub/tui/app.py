@@ -9,6 +9,7 @@ from textual.binding import Binding
 from textual.screen import ModalScreen, Screen
 from textual.widgets import DataTable, Footer, Header, Input, Markdown, Static
 
+from repohub.core.awareness import Awareness
 from repohub.core.browse import load_all_shelves
 from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_clone
 from repohub.core.providers.base import ProviderError
@@ -17,6 +18,7 @@ from repohub.core.textsafe import clean_text
 
 
 PAGE = 25
+SYMBOL = {"ok": "✓", "no": "✗", "warn": "!", "info": "·"}
 MAX_HOST_PROBLEM = 160  # characters of the first host problem shown in the status line
 
 
@@ -89,9 +91,14 @@ class DetailScreen(Screen):
         r, rel = self.detail.repo, self.detail.release
         release = f"{rel.tag}{' (arm64 available)' if rel.has_arm64 else ''}" if rel else "no releases"
         star = "★ favorited" if self.hub.favorites.is_favorite(r.key) else ""
-        self.query_one("#meta", Static).update(
-            f"{r.slug} [{r.host}]  ★ {r.stars}  {r.language or 'n/a'}  {r.license or 'no license'}  {star}\n"
-            f"{r.description}\nRelease: {release}")
+        lines = [f"{r.slug} [{r.host}]  ★ {r.stars}  {r.language or 'n/a'}  {r.license or 'no license'}  {star}",
+                 r.description, f"Release: {release}"]
+        aware = getattr(self.app, "awareness", None)
+        if aware is not None:
+            v = aware.check(r, rel)
+            lines.append(f"Can I run this here? {v.level.upper()}: {v.summary}")
+            lines += [f"  {SYMBOL[c.status]} {c.label}: {c.detail}" for c in v.checks]
+        self.query_one("#meta", Static).update("\n".join(lines))
 
     def action_back(self) -> None:
         self.app.pop_screen()
@@ -211,9 +218,10 @@ class RepoHubApp(App):
                 Binding("d", "remove_favorite", "Remove favorite"), Binding("f2", "accounts", "Accounts"), Binding("f3", "history", "History on/off"),
                 Binding("f4", "clear_history", "Clear history"), Binding("a", "accounts", "Accounts", show=False)]
 
-    def __init__(self, hub, clone_root, shelves=None, cloner=do_clone):
+    def __init__(self, hub, clone_root, shelves=None, cloner=do_clone, awareness=None):
         super().__init__()
         self.hub, self.clone_root, self.cloner = hub, clone_root, cloner
+        self.awareness = awareness if awareness is not None else Awareness(clone_root)
         if shelves is None:
             loaded = load_all_shelves()
             self.shelves, self.shelf_problems = loaded.shelves, list(loaded.problems)
@@ -233,6 +241,10 @@ class RepoHubApp(App):
 
     def on_mount(self) -> None:
         self.action_home()
+
+    def _mark(self, repo) -> str:
+        """A dot before repositories that are already in the clone folder."""
+        return "● " if repo.key in self.awareness.cloned() else ""
 
     def _table(self) -> DataTable:
         return self.query_one(DataTable)
@@ -313,7 +325,7 @@ class RepoHubApp(App):
         t.add_columns("Repo", "Host", "Stars", "Lang", "Why")
         for item in result.items:
             r = item.repo
-            t.add_row(Text(r.slug), Text(r.host), Text(str(r.stars)), Text(r.language or "n/a"), Text(item.why[:80]),
+            t.add_row(Text(self._mark(r) + r.slug), Text(r.host), Text(str(r.stars)), Text(r.language or "n/a"), Text(item.why[:80]),
                       key=f"repo:{r.host}:{r.slug}")
         notes = ["Recommended for you"]
         if not result.signal:
@@ -398,7 +410,7 @@ class RepoHubApp(App):
                 continue
             seen.add(key)
             # Text objects are not markup-parsed, so untrusted values cannot inject markup or actions.
-            t.add_row(Text(r.slug), Text(r.host), Text(str(r.stars)), Text(r.language or "n/a"),
+            t.add_row(Text(self._mark(r) + r.slug), Text(r.host), Text(str(r.stars)), Text(r.language or "n/a"),
                       Text(r.description[:70]), key=key)
         self._status(status)
 
@@ -462,7 +474,7 @@ class RepoHubApp(App):
             if key in seen:
                 continue
             seen.add(key)
-            t.add_row(Text(r.slug), Text(r.host), Text(str(r.stars)), Text(r.language or "n/a"),
+            t.add_row(Text(self._mark(r) + r.slug), Text(r.host), Text(str(r.stars)), Text(r.language or "n/a"),
                       Text((item.note or r.description)[:70]), key=key)
         first = page.offset + 1 if page.items else 0
         notes = [f"{shelf.name}: {first}-{page.offset + len(page.items)} of {page.total}  (as of {shelf.as_of or 'n/a'})"]

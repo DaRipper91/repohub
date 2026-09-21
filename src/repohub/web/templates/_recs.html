@@ -4,7 +4,7 @@
   <div class="grid">
   {% for i in result.items %}{% set r = i.repo %}
     <a class="card" href="/repo/{{ r.host }}/{{ r.slug }}">
-      <div class="name">{{ r.slug }} <span class="badge host-{{ r.host }}">{{ r.host }}</span></div>
+      <div class="name">{{ r.slug }} <span class="badge host-{{ r.host }}">{{ r.host }}</span> {% if r.key in cloned %}<span class="badge ok" title="Found in your clone folder">cloned</span>{% endif %}</div>
       <p>{{ r.description }}</p>
       <div class="meta">★ {{ r.stars }} · {{ r.language or "n/a" }}</div>
       <p class="dim">{{ i.why }}</p>
