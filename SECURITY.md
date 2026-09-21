@@ -4,7 +4,7 @@ RepoHub renders untrusted data (repository descriptions, READMEs, release names)
 
 ## Reporting a vulnerability
 
-Please report privately through GitHub: **Security → Report a vulnerability** on this repository. Do not open a public issue for a vulnerability.
+Please report privately through GitHub: **Security → Report a vulnerability** on this repository (available once the repository is public and private reporting is enabled). Until then, contact the maintainer, [@DaRipper91](https://github.com/DaRipper91), directly. Do not put vulnerability details in a public issue; if you need a private channel, open an issue that says only that.
 
 Helpful details: what you did, what you expected, what happened, the RepoHub version (`git rev-parse HEAD`), and whether it needs a hostile repository, a crafted URL, or a browser page to trigger.
 
