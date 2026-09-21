@@ -482,3 +482,199 @@ async def test_successful_clone_with_markup_path_is_plain_text(tmp_path):
         assert app.is_running
         assert any("Cloned to" in m for m, _ in calls)
         assert all(kw.get("markup") is False for _, kw in calls)
+
+
+# ---- curated shelves (Task 11) ---------------------------------------------------------------
+
+from repohub.core.browse import LoadedShelves, ShelfEntry, Snapshot  # noqa: E402
+
+
+def _cur_entries(n, note=lambda i: f"note{i}"):
+    return tuple(ShelfEntry("github", f"o/r{i}", note(i), Snapshot(f"snapdesc{i}", 100 + i, "Go", "MIT", "2026-08-01"))
+                 for i in range(n))
+
+
+def make_cur_app(tmp_path, n=30, name="Curated one", provider=None, **kw):
+    gh = provider or FakeProvider("github", [mk("github", f"o/r{i}", 999, description="livedesc") for i in range(n)])
+    shelf = Shelf(name=name, repos=_cur_entries(n, **kw), as_of="2026-09-01")
+    return RepoHubApp(make_hub(gh), tmp_path, shelves=[shelf]), gh
+
+
+async def open_shelf_row(app, pilot):
+    app.query_one(DataTable).focus()
+    await pilot.press("enter")
+    await settle(app, pilot)
+
+
+def col(table, i):
+    return [table.get_row_at(r)[i].plain for r in range(table.row_count)]
+
+
+async def test_shelf_list_shows_curated_count(tmp_path):
+    app, _ = make_cur_app(tmp_path, 30)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        row = app.query_one(DataTable).get_row_at(0)
+        assert row[1].plain == "curated · 30"
+
+
+async def test_curated_shelf_pages_with_brackets(tmp_path):
+    app, _ = make_cur_app(tmp_path, 30)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await open_shelf_row(app, pilot)
+        table = app.query_one(DataTable)
+        assert app.view == "shelf" and table.row_count == 25
+        assert [c.label.plain for c in table.columns.values()] == ["Repo", "Host", "Stars", "Lang", "Note"]
+        assert "Curated one: 1-25 of 30  (as of 2026-09-01)" in text_of(app.query_one("#status", Static))
+        await pilot.press("]")
+        await settle(app, pilot)
+        assert table.row_count == 5 and table.get_row_at(0)[0].plain == "o/r25"
+        assert "26-30 of 30" in text_of(app.query_one("#status", Static))
+        await pilot.press("]")  # last page: nothing
+        await settle(app, pilot)
+        assert table.row_count == 5 and app.shelf_offset == 25
+        await pilot.press("[")
+        await settle(app, pilot)
+        assert table.row_count == 25 and app.shelf_offset == 0
+        await pilot.press("[")  # first page: nothing
+        await settle(app, pilot)
+        assert table.row_count == 25 and app.shelf_offset == 0
+
+
+async def test_paging_keys_do_nothing_outside_curated_shelf(tmp_path):
+    app, _ = make_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await pilot.press("]", "[")
+        await settle(app, pilot)
+        assert app.view == "shelves" and app.query_one(DataTable).row_count == 1
+        await open_shelf_row(app, pilot)  # search shelf
+        n = app.query_one(DataTable).row_count
+        await pilot.press("]", "[")
+        await settle(app, pilot)
+        assert app.query_one(DataTable).row_count == n and app.view == "results"
+
+
+async def test_curated_note_falls_back_to_description(tmp_path):
+    app, _ = make_cur_app(tmp_path, 2, note=lambda i: "" if i == 0 else "mynote")
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await open_shelf_row(app, pilot)
+        assert col(app.query_one(DataTable), 4) == ["livedesc", "mynote"]
+
+
+async def test_curated_hostile_text_renders_literally(tmp_path):
+    hostile = ["[/]", "[@click=app.quit]x[/]", "[bold"]
+    app, _ = make_cur_app(tmp_path, 3, name="[@click=app.quit]n[/][bold", note=lambda i: hostile[i])
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await open_shelf_row(app, pilot)
+        table = app.query_one(DataTable)
+        assert col(table, 4) == hostile
+        table.focus()
+        for _ in range(3):
+            await pilot.click(DataTable, offset=(40, 2))
+            await pilot.click(DataTable, offset=(60, 3))
+        await pilot.pause()
+        assert app.is_running
+        assert "[@click=app.quit]n[/][bold: 1-3 of 3" in text_of(app.query_one("#status", Static))
+
+
+async def test_curated_refresh_failure_keeps_snapshot_and_shows_error(tmp_path):
+    gh = FakeProvider("github", [mk("github", "o/r0", 1)], detail_error=ProviderError("github", "[@click=app.quit]rate[/]"))
+    app, _ = make_cur_app(tmp_path, 3, provider=gh)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await open_shelf_row(app, pilot)
+        table = app.query_one(DataTable)
+        assert app.is_running and table.row_count == 3
+        assert col(table, 2) == ["100", "101", "102"]
+        assert col(table, 4) == ["note0", "note1", "note2"]
+        assert "github: " in text_of(app.query_one("#status", Static))
+        assert "[@click=app.quit]rate[/]" in text_of(app.query_one("#status", Static))
+
+
+async def test_curated_provider_runtime_error_does_not_crash(tmp_path):
+    gh = FakeProvider("github", [mk("github", "o/r0", 1)], detail_error=RuntimeError("[/] kaboom"))
+    app, _ = make_cur_app(tmp_path, 3, provider=gh)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await open_shelf_row(app, pilot)
+        assert app.is_running and app.query_one(DataTable).row_count == 3
+
+
+async def test_curated_page_failure_is_reported_plainly(tmp_path):
+    app, _ = make_cur_app(tmp_path, 3)
+    hub = app.hub
+    calls = record_notify(app)
+
+    async def boom(*a, **k):
+        raise RuntimeError("[/] [bold")
+
+    hub.curated_page = boom
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await open_shelf_row(app, pilot)
+        await pilot.pause()
+        assert app.is_running and "[/] [bold" in text_of(app.query_one("#status", Static))
+        assert calls and all(kw.get("markup") is False for _, kw in calls)
+
+
+async def test_escape_returns_to_shelf_list_and_late_result_is_dropped(tmp_path):
+    app, _ = make_cur_app(tmp_path, 30)
+    hub = app.hub
+    gate = asyncio.Event()
+    real = hub.curated_page
+
+    async def slow(*a, **k):
+        await gate.wait()
+        return await real(*a, **k)
+
+    hub.curated_page = slow
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.query_one(DataTable).focus()
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.press("escape")
+        gate.set()
+        await pilot.pause()
+        await pilot.pause()
+        assert app.view == "shelves"
+        assert [c.label.plain for c in app.query_one(DataTable).columns.values()] == ["Shelf", "Topic"]
+    app2, _ = make_cur_app(tmp_path, 30)
+    async with app2.run_test() as pilot:
+        await pilot.pause()
+        await open_shelf_row(app2, pilot)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app2.view == "shelves" and app2.query_one(DataTable).row_count == 1
+
+
+async def test_selecting_curated_row_opens_detail(tmp_path):
+    app, _ = make_cur_app(tmp_path, 3)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await open_shelf_row(app, pilot)
+        app.query_one(DataTable).focus()
+        app.query_one(DataTable).move_cursor(row=1)
+        await pilot.press("enter")
+        await settle(app, pilot)
+        assert isinstance(app.screen, DetailScreen) and app.screen.detail.repo.slug == "o/r1"
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.view == "shelf" and app.query_one(DataTable).row_count == 3
+
+
+async def test_load_all_shelves_used_by_default_and_problems_shown(tmp_path, monkeypatch):
+    shelf = Shelf(name="S", repos=_cur_entries(2), as_of="2026-09-01")
+    monkeypatch.setattr("repohub.tui.app.load_all_shelves",
+                        lambda: LoadedShelves([shelf], ["bad [/] file", "second"]))
+    app = RepoHubApp(make_hub(FakeProvider("github")), tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app.shelves == [shelf] and app.shelf_problems == ["bad [/] file", "second"]
+        status = text_of(app.query_one("#status", Static))
+        assert "2 shelf file problem(s): bad [/] file" in status
+        assert app.query_one(DataTable).row_count == 1

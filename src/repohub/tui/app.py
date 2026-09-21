@@ -9,10 +9,13 @@ from textual.binding import Binding
 from textual.screen import ModalScreen, Screen
 from textual.widgets import DataTable, Footer, Header, Input, Markdown, Static
 
-from repohub.core.browse import load_shelves
+from repohub.core.browse import load_all_shelves
 from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_clone
 from repohub.core.providers.base import ProviderError
 from repohub.core.queryparse import parse_query
+
+
+PAGE = 25
 
 
 class ConfirmClone(ModalScreen[bool]):
@@ -125,13 +128,21 @@ class DetailScreen(Screen):
 
 class RepoHubApp(App):
     TITLE = "RepoHub"
-    BINDINGS = [Binding("ctrl+f", "favorites", "Favorites"), Binding("escape", "home", "Shelves")]
+    BINDINGS = [Binding("ctrl+f", "favorites", "Favorites"), Binding("escape", "home", "Shelves"),
+                Binding("]", "next_page", "Next page"), Binding("[", "prev_page", "Prev page")]
 
     def __init__(self, hub, clone_root, shelves=None, cloner=do_clone):
         super().__init__()
         self.hub, self.clone_root, self.cloner = hub, clone_root, cloner
-        self.shelves = load_shelves() if shelves is None else shelves
+        if shelves is None:
+            loaded = load_all_shelves()
+            self.shelves, self.shelf_problems = loaded.shelves, list(loaded.problems)
+        else:
+            self.shelves, self.shelf_problems = shelves, []
         self.view = "shelves"
+        self.shelf_index = 0
+        self.shelf_offset = 0
+        self.shelf_total = 0
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -152,12 +163,39 @@ class RepoHubApp(App):
     def action_home(self) -> None:
         self.workers.cancel_node(self)  # a late search/shelf/favorites result must not overwrite the shelves
         self.view = "shelves"
+        self.refresh_bindings()
         t = self._table()
         t.clear(columns=True)
         t.add_columns("Shelf", "Topic")
         for i, s in enumerate(self.shelves):
-            t.add_row(Text(s.name), Text(s.topic or s.query), key=f"shelf:{i}")
-        self._status("Shelves. Press Enter on one, or type a search above.")
+            second = f"curated · {len(s.repos)}" if s.curated else (s.topic or s.query)
+            t.add_row(Text(s.name), Text(second), key=f"shelf:{i}")
+        status = "Shelves. Press Enter on one, or type a search above."
+        if self.shelf_problems:
+            status += f"  {len(self.shelf_problems)} shelf file problem(s): {self.shelf_problems[0]}"
+        self._status(status)
+
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action in ("next_page", "prev_page"):
+            # only on the main screen, in a curated shelf view, and not at the relevant end
+            if self.view != "shelf" or len(self.screen_stack) > 1:
+                return False
+            if action == "next_page":
+                return self.shelf_offset + PAGE < self.shelf_total
+            return self.shelf_offset > 0
+        return True
+
+    def action_next_page(self) -> None:
+        if self.check_action("next_page", ()):
+            self._go_page(self.shelf_offset + PAGE)
+
+    def action_prev_page(self) -> None:
+        if self.check_action("prev_page", ()):
+            self._go_page(max(0, self.shelf_offset - PAGE))
+
+    def _go_page(self, offset: int) -> None:
+        self._status("Loading page…")
+        self.run_worker(self._open_shelf(self.shelf_index, offset), exclusive=True)
 
     def action_favorites(self) -> None:
         self.run_worker(self._show_favorites(), exclusive=True)
@@ -179,6 +217,7 @@ class RepoHubApp(App):
 
     def _show_repos(self, repos, status: str, view: str = "results") -> None:
         self.view = view
+        self.refresh_bindings()
         t = self._table()
         t.clear(columns=True)
         t.add_columns("Repo", "Host", "Stars", "Lang", "Description")
@@ -219,8 +258,11 @@ class RepoHubApp(App):
             label += "  Ignored: " + "; ".join(parsed.problems)  # plain-text status Static, never markup
         self._show_result(result, label)
 
-    async def _open_shelf(self, index: int) -> None:
+    async def _open_shelf(self, index: int, offset: int = 0) -> None:
         shelf = self.shelves[index]
+        if shelf.curated:
+            await self._open_curated(index, offset)
+            return
         try:
             result = await self.hub.shelf(shelf)
         except Exception as e:
@@ -228,6 +270,34 @@ class RepoHubApp(App):
             self.notify(f"Could not load shelf: {e}", severity="error", markup=False)
             return
         self._show_result(result, shelf.name)
+
+    async def _open_curated(self, index: int, offset: int) -> None:
+        shelf = self.shelves[index]
+        try:
+            page = await self.hub.curated_page(shelf, offset, PAGE)
+        except Exception as e:
+            self._status(f"Could not load shelf: {e}")
+            self.notify(f"Could not load shelf: {e}", severity="error", markup=False)
+            return
+        self.view = "shelf"
+        self.shelf_index, self.shelf_offset, self.shelf_total = index, page.offset, page.total
+        self.refresh_bindings()
+        t = self._table()
+        t.clear(columns=True)
+        t.add_columns("Repo", "Host", "Stars", "Lang", "Note")
+        seen: set[str] = set()
+        for item in page.items:
+            r = item.repo
+            key = f"repo:{r.host}:{r.slug}"
+            if key in seen:
+                continue
+            seen.add(key)
+            t.add_row(Text(r.slug), Text(r.host), Text(str(r.stars)), Text(r.language or "n/a"),
+                      Text((item.note or r.description)[:70]), key=key)
+        first = page.offset + 1 if page.items else 0
+        notes = [f"{shelf.name}: {first}-{page.offset + len(page.items)} of {page.total}  (as of {shelf.as_of or 'n/a'})"]
+        notes += [f"{h}: {m}" for h, m in page.errors.items()]
+        self._status("  ".join(notes))
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         key = event.row_key.value or ""
