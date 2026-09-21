@@ -232,6 +232,12 @@ A shelf is a named group of repositories on the home page. There are two kinds:
 
 Home-page tiles for curated shelves show the stored snapshots only (no API calls). Opening a shelf refreshes the entries you can see live: 12 per page in the web app, 25 per page in the terminal app (page with `[` and `]`). If refreshing an entry fails, its snapshot is kept. The web app marks such an entry "as of" the snapshot date and the CLI reports `"live": false` for it. The terminal app shows one shelf-level "as of" date in its status line and does not mark individual stale rows. After a host rate-limits a refresh, RepoHub stops refreshing that host's entries for at least 60 seconds (up to an hour, following the host's reset time) and shows their snapshots.
 
+<p align="center">
+  <img src="docs/assets/web-shelf-codeberg.png" alt="Web app: the Catalog: Codeberg shelf, 18 hand-picked Codeberg projects with the curator's notes and live stats" width="92%">
+  <br>
+  <sub>The <code>Catalog: Codeberg</code> shelf: 18 Codeberg projects with the curator's notes and live stats. Captured 2026-09-21 with live data.</sub>
+</p>
+
 ### Your own shelves
 
 Personal shelves go in `shelves.yaml` in your user config directory (`~/.config/repohub/shelves.yaml` on Linux, found with platformdirs' `user_config_dir`). They are loaded after the packaged shelves.
