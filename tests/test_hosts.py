@@ -130,3 +130,9 @@ def test_rejects_invalid_domain(bad):
 def test_accepts_valid_domains():
     assert HostRegistry([_spec("a", domain="x"), _spec("b", domain="git.example.org"),
                          _spec("c", domain="a" + "b" * 251 + "c")]).ids == ("a", "b", "c")
+
+
+@pytest.mark.parametrize("reserved", ["all", "both"])
+def test_reserved_ids_are_rejected_by_the_registry(reserved):
+    with pytest.raises(ValueError, match="reserved"):
+        HostRegistry([_spec(reserved)])

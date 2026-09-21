@@ -286,7 +286,7 @@ def test_table_cell_widths_are_capped():
     assert "s" * 61 not in row and "L" * 21 not in row and "…" in row
     hb = mk(slug="o/r2", host="gitlab" + "z" * 100)
     code, out, err = run(["search", "x"], make_hub(FakeProvider("gitlab", [hb])))
-    assert len(out.splitlines()[1].split()[1]) <= 8
+    assert len(out.splitlines()[1].split()[1]) <= 20
 
 
 def _curated_run(g):
@@ -512,3 +512,27 @@ def test_shelves_json_lists_codeberg_shelf(monkeypatch, tmp_path):
     doc = json.loads(out)
     cb = [s for s in doc["shelves"] if s["name"] == "Catalog: Codeberg"]
     assert code == 0 and cb and cb[0]["kind"] == "curated" and cb[0]["entries"] == 18
+
+
+def test_host_id_is_not_truncated_in_the_table(config_dir):
+    write_hosts(config_dir, "- {id: averylongforgeid-20c, kind: forgejo, url: https://git.example.org}\n")
+    p = FakeProvider("averylongforgeid-20c", [mk("averylongforgeid-20c", "o/r")])
+    code, out, _ = run(["search", "x", "--host", "averylongforgeid-20c"], make_hub(p))
+    assert code == 0 and "averylongforgeid-20c" in out
+
+
+@pytest.mark.parametrize("argv", [["search", "tui"], ["repo", "github:o/r"], ["shelf", "Curated One"],
+                                  ["favorites"]])
+def test_hosts_file_problems_are_warned_on_every_command(config_dir, shelves, argv):
+    write_hosts(config_dir, "- {id: bad\x1b[31m, kind: nope, url: 'http://x'}\n")
+    hub = make_hub(gh())
+    code, out, err = run([*argv, "--json"] if argv[0] != "repo" else [*argv, "--json"], hub)
+    warns = [ln for ln in err.splitlines() if ln.startswith("warning: hosts file")]
+    assert len(warns) == 1 and "\x1b" not in err
+    json.loads(out)  # stdout stays one pure document
+
+
+def test_hosts_file_warnings_are_capped(config_dir):
+    write_hosts(config_dir, "".join(f"- {{id: x{i}, kind: nope, url: 'http://x'}}\n" for i in range(20)))
+    code, out, err = run(["favorites"], make_hub(gh()))
+    assert len([ln for ln in err.splitlines() if ln.startswith("warning: hosts file")]) == cli.MAX_PROBLEMS_SHOWN

@@ -39,3 +39,17 @@ async def test_gitlab_unsafe_url_falls_back():
     respx.get("https://gitlab.com/api/v4/projects").mock(return_value=httpx.Response(200, json=[GL]))
     r = (await GitLabProvider().search("x", SearchFilters()))[0]
     assert r.url == "https://gitlab.com/g/p"
+
+
+@pytest.mark.parametrize("bad", [
+    "https://a@b.example/", "https://a:b@b.example/x", "https://a.example.org@evil.example/o/r",
+    "https://a.example/o‮r", "https://a.example/o​r", "https://a.example/o­r",
+    "https://a.example/ x", "https://a.example/⁦x", "https://a.example/\x85x",
+    "https://a​.example/x", "https://a.example/﻿x"])
+def test_safe_url_rejects_userinfo_and_invisible_characters(bad):
+    assert safe_url(bad) == ""
+
+
+def test_safe_url_still_accepts_ordinary_urls_with_ports_and_unicode_letters():
+    assert safe_url("https://ok.example:8443/a?b=c#d") == "https://ok.example:8443/a?b=c#d"
+    assert safe_url("https://ok.example/café") == "https://ok.example/café"

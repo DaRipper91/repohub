@@ -148,7 +148,7 @@ def _table(headers: list[str], rows: list[list[str]], right: tuple[int, ...] = (
 
 
 def _repo_table(repos: list[Repo]) -> str:
-    rows = [[_fit(r.slug, 60), _fit(r.host, 8), str(r.stars), _fit(r.language, 20), _date(r.pushed_at), _short(r.description)] for r in repos]
+    rows = [[_fit(r.slug, 60), _fit(r.host, 20), str(r.stars), _fit(r.language, 20), _date(r.pushed_at), _short(r.description)] for r in repos]
     return _table(["repo", "host", "stars", "language", "updated", "description"], rows, right=(2,))
 
 
@@ -365,6 +365,9 @@ def main(argv: list[str] | None = None, *, hub_factory: Callable | None = None,
         # repo validation and hosts. build_hub() configures again from the same file, which yields
         # an equal registry. This builds no providers, opens no database and uses no network.
         host_problems = configure_hosts()
+        if args.command != "hosts":  # `hosts` prints them itself (also in its JSON)
+            for p in host_problems[:MAX_PROBLEMS_SHOWN]:
+                o.err(f"warning: {p}")
         if args.command == "search":
             with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
                 _check_host(parser, args.host)  # exits 2 on an unknown host

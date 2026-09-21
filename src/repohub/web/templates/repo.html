@@ -3,7 +3,7 @@
 {% block body %}
 {% set r = d.repo %}
 <article class="detail">
-  <h1>{{ r.slug }} <span class="badge {{ r.host }}">{{ r.host }}</span></h1>
+  <h1>{{ r.slug }} <span class="badge host-{{ r.host }}">{{ r.host }}</span></h1>
   {% if r.archived %}<p class="banner warn">This repository is archived.</p>{% endif %}
   <p>{{ r.description }}</p>
   <p class="meta">★ {{ r.stars }} · ⑂ {{ r.forks }} · {{ r.language or "n/a" }} · {{ r.license or "no license" }} · last push {{ r.pushed_at[:10] }}</p>

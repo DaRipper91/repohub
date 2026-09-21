@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import re
+import unicodedata
 from urllib.parse import urlparse
 
 _SLUG = re.compile(r"^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)+$")
@@ -22,19 +23,25 @@ class RateLimited(ProviderError):
     pass
 
 
+# control, format (bidi, zero-width, soft hyphen), surrogate, private-use and line/paragraph separators
+_BAD_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Co", "Zl", "Zp"})
+
+
 def safe_url(value: str | None) -> str:
     """Return the stripped value only if it is a plain http(s) URL with a host and no whitespace/control chars."""
     if not value:
         return ""
     v = value.strip()
-    if not v or any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in v):
+    if not v or any(c.isspace() or ord(c) < 32 or ord(c) == 127 or unicodedata.category(c) in _BAD_CATEGORIES
+                    for c in v):
         return ""
     try:
         u = urlparse(v)
         host = u.hostname
+        userinfo = u.username is not None or u.password is not None or "@" in u.netloc
     except ValueError:
         return ""
-    return v if u.scheme.lower() in ("http", "https") and host else ""
+    return v if u.scheme.lower() in ("http", "https") and host and not userinfo else ""
 
 
 def valid_slug(slug: str, host: str = "github") -> bool:

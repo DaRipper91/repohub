@@ -688,3 +688,10 @@ def test_builtins_not_mutated_by_extras(tmp_path):
     load(tmp_path, entry())
     assert [s.id for s in hosts.BUILTIN_HOSTS] == list(BUILTIN_IDS)
     assert hosts.registry().ids == BUILTIN_IDS
+
+
+@pytest.mark.parametrize("reserved", ["all", "both"])
+def test_reserved_ids_are_rejected_with_a_clear_message(tmp_path, reserved):
+    loaded = load(tmp_path, entry(id=reserved))
+    assert_builtins_only(loaded)
+    assert len(loaded.problems) == 1 and "reserved" in loaded.problems[0]

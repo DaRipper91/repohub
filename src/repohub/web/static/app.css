@@ -7,7 +7,7 @@ button,.button{cursor:pointer;text-decoration:none;display:inline-block}button:h
 main{max-width:1100px;margin:0 auto;padding:16px}h1,h2,h3{color:var(--lav)}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
 .card{display:block;background:var(--panel);border-radius:10px;padding:12px;color:var(--text);text-decoration:none;border:1px solid transparent}.card:hover{border-color:var(--lav)}
 .name{color:var(--pink);font-weight:600;word-break:break-all}.meta,.dim{color:var(--dim);font-size:.9em}
-.badge{font-size:.7em;padding:1px 6px;border-radius:99px;background:#3a3a55}.badge.codeberg{background:#1f3a5c;color:#8ecbff}.badge.ok{background:#22332b;color:var(--mint)}
+.badge{font-size:.7em;padding:1px 6px;border-radius:99px;background:#3a3a55}.badge.host-codeberg{background:#1f3a5c;color:#8ecbff}.badge.ok{background:#22332b;color:var(--mint)}
 .banner{background:#22303a;border-radius:6px;padding:8px 12px}.banner.warn{background:#3a2c24;color:var(--peach)}
 .layout{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:20px}.layout>*{min-width:0}.readme{overflow-wrap:anywhere}.readme img{max-width:100%;height:auto}.readme pre{overflow-x:auto;padding:10px;background:#181825;border-radius:8px}.readme table{display:block;overflow-x:auto}aside{overflow-wrap:anywhere}.searchbar .num{width:6.5em}.searchbar input[name=language]{width:8em}
 .tag{background:#3a3a55;border-radius:6px;padding:1px 6px;font-size:.85em}.actions{display:flex;gap:8px;margin:12px 0}

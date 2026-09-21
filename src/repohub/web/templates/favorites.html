@@ -3,7 +3,7 @@
 <p class="dim">Stats refresh in the background; reload to see updates.</p>
 <div class="grid">
 {% for r in repos %}
-  <a class="card" href="/repo/{{ r.host }}/{{ r.slug }}"><div class="name">{{ r.slug }} <span class="badge {{ r.host }}">{{ r.host }}</span></div>
+  <a class="card" href="/repo/{{ r.host }}/{{ r.slug }}"><div class="name">{{ r.slug }} <span class="badge host-{{ r.host }}">{{ r.host }}</span></div>
   <p>{{ r.description }}</p><div class="meta">★ {{ r.stars }} · {{ r.language or "n/a" }}</div></a>
 {% else %}<p class="dim">No favorites yet.</p>{% endfor %}
 </div>{% endblock %}

@@ -4,6 +4,7 @@ import re
 from dataclasses import dataclass, field
 
 KINDS = ("github", "gitlab", "forgejo")
+RESERVED_IDS = ("all", "both")  # host: values that mean "every host"
 ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,19}$")
 DOMAIN_RE = re.compile(r"^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$")  # lowercase; use fullmatch
 
@@ -43,6 +44,8 @@ class HostRegistry:
                 raise ValueError(f"invalid host id {spec.id!r}")
             if not DOMAIN_RE.fullmatch(spec.domain):
                 raise ValueError(f"invalid host domain {spec.domain!r}")
+            if spec.id in RESERVED_IDS:
+                raise ValueError(f"host id {spec.id!r} is reserved")
             if spec.id in self._specs:
                 raise ValueError(f"duplicate host id {spec.id!r}")
             if spec.domain in self._domains:

@@ -613,3 +613,31 @@ async def test_topic_plus_multiword_text():
 async def test_empty_page_multiword():
     respx.get(f"{API}/repos/search").mock(return_value=search_resp())
     assert await ForgejoProvider("codeberg", API).search("wayland terminal", SearchFilters()) == []
+
+
+@pytest.mark.parametrize("html_url", [
+    "https://evil.example/o/r", "https://sub.codeberg.org/o/r", "https://codeberg.org.evil.example/o/r",
+    "https://codeberg.org@evil.example/o/r", "https://user@codeberg.org/o/r", "http://evil.example/o/r"])
+@respx.mock
+async def test_html_url_off_domain_falls_back_to_constructed_url(html_url):
+    respx.get(f"{API}/repos/search").mock(return_value=search_resp(dict(ITEM, html_url=html_url)))
+    repos = await ForgejoProvider("codeberg", API).search("x", SearchFilters())
+    assert repos[0].url == "https://codeberg.org/o/r"
+
+
+@respx.mock
+async def test_html_url_on_own_domain_is_used_case_insensitively():
+    respx.get(f"{API}/repos/search").mock(
+        return_value=search_resp(dict(ITEM, html_url="https://CODEBERG.org/o/r?x=1")))
+    repos = await ForgejoProvider("codeberg", API).search("x", SearchFilters())
+    assert repos[0].url == "https://CODEBERG.org/o/r?x=1"
+
+
+@respx.mock
+async def test_release_assets_may_live_on_another_host():
+    rel = {"tag_name": "v1", "published_at": "2026-01-01T00:00:00Z",
+           "assets": [{"name": "a.zip", "size": 1, "browser_download_url": "https://cdn.example.net/a.zip"},
+                      {"name": "b.zip", "size": 1, "browser_download_url": "https://u@cdn.example.net/b.zip"}]}
+    respx.get(f"{API}/repos/o/r/releases/latest").mock(return_value=httpx.Response(200, json=rel))
+    r = await ForgejoProvider("codeberg", API).latest_release("o/r")
+    assert [a.name for a in r.assets] == ["a.zip"]

@@ -78,6 +78,14 @@ class ForgejoProvider:
             raise ProviderError(self.host, "invalid repository name")
         return slug
 
+    def _own_url(self, value) -> str:
+        """A repo page URL is trusted only when it is on this provider's own hostname."""
+        url = safe_url(value)
+        try:
+            return url if url and (urlparse(url).hostname or "").lower() == self._domain.lower() else ""
+        except ValueError:
+            return ""
+
     def _to_repo(self, item: dict) -> Repo:
         raw = item["full_name"]
         if not isinstance(raw, str):
@@ -86,7 +94,7 @@ class ForgejoProvider:
         if len(slug) > MAX_SLUG or not valid_slug(slug, "github"):
             raise ValueError("full_name")
         return Repo(
-            host=self.host, slug=slug, url=safe_url(item.get("html_url")) or f"https://{self._domain}/{slug}",
+            host=self.host, slug=slug, url=self._own_url(item.get("html_url")) or f"https://{self._domain}/{slug}",
             description=clean_text(item.get("description")), stars=_count(item["stars_count"]), language=clean_text(item.get("language")),
             license="", topics=tuple(clean_text(t) for t in (item.get("topics") or ())), pushed_at=_utc(item.get("updated_at")),
             archived=bool(item.get("archived")), forks=_count(item.get("forks_count"), 0), homepage=safe_url(item.get("website")),

@@ -545,7 +545,7 @@ def test_dropdown_lists_all_registered_hosts(tmp_path):
 def test_repo_page_for_codeberg_has_badge(tmp_path):
     client, *_ = _multi(tmp_path)
     r = client.get("/repo/codeberg/o/r")
-    assert r.status_code == 200 and 'class="badge codeberg"' in r.text
+    assert r.status_code == 200 and 'class="badge host-codeberg"' in r.text
 
 
 def test_repo_page_rejects_bad_codeberg_slug_and_unknown_host(tmp_path):
@@ -602,7 +602,7 @@ def test_no_host_problems_no_banners(tmp_path):
 
 def test_css_has_codeberg_badge(tmp_path):
     client, *_ = _multi(tmp_path)
-    assert ".badge.codeberg" in client.get("/static/app.css").text
+    assert ".badge.host-codeberg" in client.get("/static/app.css").text
 
 
 def test_unconfigured_host_shelf_renders_snapshot_and_error_banner(tmp_path):
@@ -622,3 +622,17 @@ def test_codeberg_shelf_on_home_page(tmp_path, monkeypatch):
     client = TestClient(create_app(make_hub(FakeProvider("github")), tmp_path, session_token=TOKEN),
                         base_url="http://localhost")
     assert "Catalog: Codeberg" in client.get("/").text
+
+
+def test_badge_class_is_namespaced_so_an_id_cannot_collide_with_ok(tmp_path):
+    from repohub.core.hosts import BUILTIN_HOSTS, HostRegistry, HostSpec, set_registry
+    set_registry(HostRegistry(BUILTIN_HOSTS + (HostSpec("ok", "forgejo", "ok", "ok.example.org",
+                                                        "https://ok.example.org/api/v1"),)))
+    from helpers import FakeProvider, make_hub, mk
+    from fastapi.testclient import TestClient
+    from repohub.web.app import create_app
+    hub = make_hub(FakeProvider("ok", [mk("ok", "o/r")]))
+    client = TestClient(create_app(hub, tmp_path, shelves=[]), base_url="http://localhost")
+    html = client.get("/search", params={"q": "x"}).text
+    assert 'class="badge host-ok"' in html and 'class="badge ok"' not in html
+    assert ".badge.host-codeberg" in client.get("/static/app.css").text

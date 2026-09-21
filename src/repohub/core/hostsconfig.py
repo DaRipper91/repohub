@@ -16,7 +16,7 @@ from pathlib import Path
 import yaml
 from platformdirs import user_config_dir
 
-from repohub.core.hosts import BUILTIN_HOSTS, ID_RE, HostRegistry, HostSpec, set_registry
+from repohub.core.hosts import BUILTIN_HOSTS, ID_RE, RESERVED_IDS, HostRegistry, HostSpec, set_registry
 from repohub.core.textsafe import clean_text
 
 MAX_HOSTS_BYTES = 256 * 1024
@@ -162,6 +162,8 @@ def _parse_host(raw: object, taken_ids: set[str], taken_domains: set[str],
     if not isinstance(host_id, str) or not ID_RE.fullmatch(host_id):
         raise ValueError(f"invalid id {_show(host_id)} (lowercase letters, digits and '-', "
                          "starting with a letter, at most 20 characters)")
+    if host_id in RESERVED_IDS:
+        raise ValueError(f"id {_show(host_id)} is reserved (it means every host in searches)")
     if host_id in taken_ids:
         raise ValueError(f"id {_show(host_id)} is already used")
     if raw["kind"] != "forgejo":
