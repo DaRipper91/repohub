@@ -148,7 +148,7 @@ class RepoHubApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Input(placeholder="Search GitHub and GitLab (e.g. tui lang:rust stars:500 days:90 host:github sort:updated nofork)", id="q")
+        yield Input(placeholder="Search repositories (e.g. tui lang:rust stars:500 days:90 host:codeberg sort:updated nofork)", id="q")
         yield Static("", id="status", markup=False)
         yield DataTable(cursor_type="row")
         yield Footer()

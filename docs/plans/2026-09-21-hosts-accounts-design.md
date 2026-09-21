@@ -1,7 +1,7 @@
 # Design: other hosts, accounts, star and fork, recommendations (Phases 2 to 5)
 
 Date: 2026-09-21
-Status: Approved design. Phase 2 is next to be built; Phases 3 to 5 follow in order, each with its own plan and reviews.
+Status: Approved design. Phase 2 (other hosts) is implemented (v0.3.0); Phase 3 is next, then Phases 4 and 5, each with its own plan and reviews.
 
 ## Where this comes from
 
@@ -22,8 +22,8 @@ After Phase 1 (v0.2.0) the owner asked to work next on the README's "Not include
 | Phase | What | Status |
 |---|---|---|
 | v1, 1 | Search, shelves, favorites, safe clone, web + terminal apps; filters and sorting, curated shelves, CLI | Done (v0.2.0) |
-| **2. Other hosts** | Host registry; Forgejo/Gitea provider; Codeberg built in; extra instances in a config file | Next |
-| **3. Accounts and login** | Existing sign-ins per host; an Accounts page (who, token source, scopes, rate limit) | Planned |
+| **2. Other hosts** | Host registry; Forgejo/Gitea provider; Codeberg built in; extra instances in a config file | Done (v0.3.0) |
+| **3. Accounts and login** | Existing sign-ins per host; an Accounts page (who, token source, scopes, rate limit) | Next |
 | **4. Star and fork** | Star, unstar and fork from the web and terminal apps, always confirmed, with a local action log | Planned |
 | **5. Recommendations** | Favorites, stars, opt-in history and "similar repos", all computed locally | Planned |
 | 6. Machine awareness | "Already cloned" badges (scan the clone folder only), "Can I run this here?" panel, project detector | Paused |
@@ -63,11 +63,11 @@ The GitHub and GitLab write and identity endpoints are checked against the real 
   `- {id: myforge, kind: forgejo, url: https://git.example.org, token_env: REPOHUB_MYFORGE_TOKEN}`. Extra hosts' token variables must start with `REPOHUB_` (and end in `_TOKEN`), so a tampered config cannot bind an unrelated environment variable such as `AWS_SESSION_TOKEN` to a host it controls; the default is `REPOHUB_<ID>_TOKEN`.
   Rules: `url` must be `https` with a plain ASCII hostname: no credentials, no port, no query or fragment, and no path other than an empty one or `/` (extra instances must serve the API at `/api/v1` on the standard https port); IP literals, `localhost` and single-label names are rejected; ids are `[a-z][a-z0-9-]{0,19}` and cannot clash with built-in ids; domains and token variables must be unique across all hosts; at most 20 extra hosts; the file is at most 256 KB, must be a regular file, and duplicate YAML keys are rejected. A broken file never stops the app: the problem is shown and the file is skipped (same handling as the personal shelves file).
 - Repo keys keep the shape `host:owner/name`, with the host id.
-- Every place that lists hosts (query syntax `host:`, the web dropdown, the CLI `--host`, badges, the `Repo.host` validation, curated shelf entries, favorites, cache keys) reads the registry. A shelf entry or favorite for a host that is no longer configured stays stored and is shown as unavailable, not deleted.
+- Every place that lists hosts (query syntax `host:`, the web dropdown, the CLI `--host`, badges, the `Repo.host` validation, curated shelf entries, favorites, cache keys) reads the registry. A shelf entry or favorite for a host that is no longer configured stays stored and is shown as unavailable ("host not configured"), not deleted.
 
 ## Forgejo/Gitea provider
 
-- Search through `/repos/search`: `q`, `sort` (`stars`, `updated`), `order=desc`, `limit`, `mode=source` to hide forks, `archived=false`, and the topic mode for `topic:`. Language, minimum stars, recency and sorting by forks are applied client-side because the endpoint does not filter on them.
+- Search through `/repos/search` (the server matches `q` as a single keyword; see the changes section below): `q`, `sort` (`stars`, `updated`), `order=desc`, `limit`, `mode=source` to hide forks, `archived=false`, and the topic mode for `topic:`. Language, minimum stars, recency and sorting by forks are applied client-side because the endpoint does not filter on them.
 - Detail: the repo JSON, the README by trying the usual file names against `/raw/`, and `/releases/latest` (404 means none). License is unknown.
 - Same safety as the existing providers: redirects are not followed, tokens are sent only to their own host, slugs are validated, malformed responses become `ProviderError`, text passes through `clean_text` and URLs through `safe_url`, and rate-limit responses use the existing pause logic.
 - `Authorization: token <t>` is sent only when a token exists for that host.
@@ -113,3 +113,20 @@ The GitHub and GitLab write and identity endpoints are checked against the real 
 - Self-hosted instances are user-configured input: URL validation and the no-redirect rule matter more than for the built-in hosts.
 - Scopes and rate limits are not exposed by every host; the Accounts page must say "unknown" rather than guess.
 - Recommendation quality depends on the data available; the explanations exist so a poor result is easy to understand.
+
+# Changes made during Phase 2 implementation
+
+What differs from the plan above, or was added while building it (see `git log`):
+
+- **Token variable rule.** Extra hosts may only use `REPOHUB_*_TOKEN` variables (default `REPOHUB_<ID>_TOKEN`), so a config file cannot bind an unrelated variable such as `AWS_SESSION_TOKEN` to a host. Token variables must also be unique across all hosts.
+- **Alias-bomb-safe error messages.** The hosts and shelves loaders describe non-string YAML values by type only, because YAML aliases share objects and `str()` of a small file can expand exponentially.
+- **Duplicate YAML keys are rejected** in the hosts and shelves files.
+- **Provider hardening.** `guard_parse` also catches `OverflowError` and `RecursionError`. The Forgejo provider validates slugs (invalid names are dropped from search results), clamps star and fork counts to a bounded range, requires an https base URL without credentials, query or fragment, and never follows redirects.
+- **Multi-word search.** The real Codeberg server treats the whole `q` as one keyword (`wayland` and `terminal` match, `wayland terminal` matches nothing). The provider sends the longest of at most six words and requires every word to appear in the name, description or topics on the client, so a page can shrink.
+- **Clone.** URL validation runs once and everything derives from it. Malformed URLs (for example ones that make `urlparse` raise) become `CloneError`. The allow-list is the set of configured hosts' domains.
+- **"host not configured".** Shelf entries for hosts that are not configured are never sent to a provider. They keep their snapshot and report `host not configured`; `Hub.repo_summary` and detail lookups raise a `ProviderError` with the same message.
+- **`--host` is validated after parsing.** The valid ids depend on `hosts.yaml`, which is read only after argument parsing, so `--help`, `--version` and usage errors never touch the file. An unknown id is a usage error (exit 2) that does not echo the input.
+- **`repohub hosts [--json]`.** Lists the configured hosts (id, kind, name, domain, builtin, whether a token is present, and the variable names), plus any problems with `hosts.yaml`. It never prints token values.
+- **Codeberg shelf.** A packaged `Catalog: Codeberg` curated shelf of 18 repositories (`catalog_codeberg.yaml`), the ninth curated shelf.
+- **Where problems show.** A web home banner, the terminal app's status line, and `warning:` lines from `repohub hosts`.
+- **Live tests.** Opt-in Codeberg tests (`pytest -m live`), anonymous, that skip rather than fail on rate limits or an unreachable server.

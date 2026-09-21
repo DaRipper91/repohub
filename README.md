@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/banner.svg" alt="RepoHub: browse GitHub and GitLab like an app store" width="100%">
+  <img src="docs/assets/banner.svg" alt="RepoHub: browse GitHub, GitLab and Codeberg like an app store" width="100%">
 </p>
 
 <p align="center">
@@ -12,7 +12,7 @@
 </p>
 
 <p align="center">
-  <b>Search GitHub and GitLab in one box. Open a store-style page for any repo. Favorite it. Clone it safely.</b><br>
+  <b>Search GitHub, GitLab and Codeberg in one box. Open a store-style page for any repo. Favorite it. Clone it safely.</b><br>
   <sub>A local web app and a terminal app, sharing one core.</sub>
 </p>
 
@@ -21,6 +21,7 @@
   <a href="#-quick-start">Quick start</a> ·
   <a href="#-terminal-app">Terminal app</a> ·
   <a href="#-web-app">Web app</a> ·
+  <a href="#-hosts">Hosts</a> ·
   <a href="#-search-syntax">Search syntax</a> ·
   <a href="#-shelves">Shelves</a> ·
   <a href="#-command-line">Command line</a> ·
@@ -33,7 +34,7 @@
 <p align="center">
   <img src="docs/assets/web-home.png" alt="RepoHub web app: shelves of popular repositories" width="92%">
   <br>
-  <sub>The web app's home page: browse shelves, or search both hosts at once. (Captured 2026-09-21 with live data.)</sub>
+  <sub>The web app's home page: browse shelves, or search every host at once. (Captured 2026-09-21 with live data.)</sub>
 </p>
 
 ---
@@ -42,12 +43,12 @@
 
 | | |
 |---|---|
-| 🔎 **One search, two hosts** | GitHub and GitLab are queried together and merged into a single ranked list. Filter by language, minimum stars, recent activity and host; sort by stars, last update or forks; hide forks. A small [search syntax](#-search-syntax) (`lang:rust stars:>500 nofork sort:updated`) works the same in the web app, the terminal app and the CLI. If one host fails or rate-limits you, the other host's results still show. |
-| 🗂️ **Store-style shelves** | Browse shelves without typing a query: six search shelves (Terminal tools, Local AI, Retro and emulation, Self-hosted, Creative coding, Networking) and eight curated **Catalog** shelves of 171 hand-picked projects with a note on each. Add your own shelves in a personal YAML file. |
-| 💻 **A scriptable CLI** | `repohub search`, `repo`, `shelves`, `shelf` and `favorites` print readable tables or stable JSON, with documented exit codes. Read-only by design. |
+| 🔎 **One search, every host** | GitHub, GitLab and Codeberg are queried together and merged into a single ranked list. Codeberg is built in, and a `hosts.yaml` file adds more Forgejo or Gitea servers (see [Hosts](#-hosts)). Filter by language, minimum stars, recent activity and host; sort by stars, last update or forks; hide forks. A small [search syntax](#-search-syntax) (`lang:rust stars:>500 nofork sort:updated`) works the same in the web app, the terminal app and the CLI. If one host fails or rate-limits you, the other hosts' results still show. |
+| 🗂️ **Store-style shelves** | Browse shelves without typing a query: six search shelves (Terminal tools, Local AI, Retro and emulation, Self-hosted, Creative coding, Networking) and nine curated **Catalog** shelves of hand-picked projects with a note on each (171 across eight general shelves, plus 18 on Codeberg). Add your own shelves in a personal YAML file. |
+| 💻 **A scriptable CLI** | `repohub search`, `repo`, `shelves`, `shelf`, `favorites` and `hosts` print readable tables or stable JSON, with documented exit codes. Read-only by design. |
 | 📄 **Repo pages that read like an app page** | Rendered README, stars, forks, license, topics, and the latest release with its files. A green **arm64** badge appears when a release ships an arm64 or aarch64 build. |
 | ⭐ **Favorites** | Save repos to a local wishlist. Stats refresh in the background and never block the page. |
-| 📥 **Safe clone** | Shows the exact destination and asks before doing anything. Shallow clone, `https` on `github.com` or `gitlab.com` only, and no install or build steps are ever run. |
+| 📥 **Safe clone** | Shows the exact destination and asks before doing anything. Shallow clone, `https` on a configured host only (`github.com`, `gitlab.com`, `codeberg.org` and any host in your `hosts.yaml`), and no install or build steps are ever run. |
 | 🖥️ **Two front ends, one core** | A local web app (FastAPI, Jinja, htmx) and a keyboard-driven terminal app (Textual). Both use the same providers, search, cache and favorites. |
 | 🔒 **Local-first** | Runs on your machine, binds to loopback by default, keeps tokens in memory, and has no analytics or telemetry. |
 
@@ -113,7 +114,7 @@ Open a repository to read its README and release info. Press `f` to favorite it 
 
 ## 🌐 Web app
 
-Search across both hosts with filters, then open any repo for a store-style page.
+Search across all hosts with filters, then open any repo for a store-style page.
 
 <p align="center">
   <img src="docs/assets/web-search.png" alt="Web app: search results for 'terminal ui'" width="92%">
@@ -131,6 +132,56 @@ Search across both hosts with filters, then open any repo for a store-style page
 
 The web app starts on <http://127.0.0.1:8765>. It only accepts requests addressed to `127.0.0.1` or `localhost`; see [Security](#-security).
 
+## 🌍 Hosts
+
+RepoHub searches every configured host at once. Three are built in:
+
+| Id | Host | Kind |
+|---|---|---|
+| `github` | GitHub (`github.com`) | GitHub |
+| `gitlab` | GitLab (`gitlab.com`) | GitLab |
+| `codeberg` | Codeberg (`codeberg.org`) | Forgejo |
+
+### More Forgejo and Gitea servers
+
+Add your own servers in `hosts.yaml` in your user config directory (`~/.config/repohub/hosts.yaml` on Linux, next to `shelves.yaml`):
+
+```yaml
+- {id: myforge, kind: forgejo, url: https://git.example.org, token_env: REPOHUB_MYFORGE_TOKEN}
+```
+
+`name` is optional (it defaults to the id). The rules, in plain words:
+
+- Only `kind: forgejo` is supported (Gitea servers speak the same API).
+- `url` must be `https` with a plain hostname: no credentials, port, path, query or fragment. IP addresses and `localhost` are rejected, and the instance must serve its API at `/api/v1` on the standard https port.
+- `id` uses lowercase letters, digits and `-`, starts with a letter, is at most 20 characters, and cannot reuse a built-in id (`github`, `gitlab`, `codeberg`).
+- Domains and token variables must be unique across all hosts.
+- `token_env` must start with `REPOHUB_` and end in `_TOKEN` (capital letters, digits and `_`). It defaults to `REPOHUB_<ID>_TOKEN`. This is deliberate: a config file cannot point an unrelated variable such as `AWS_SESSION_TOKEN` at a host.
+- At most 20 extra hosts. The file may be at most 256 KB, must be a regular file, and duplicate YAML keys are rejected.
+- A broken entry is skipped with a message. A broken file is skipped as a whole. The built-in hosts always load.
+
+Problems are shown as a banner on the web home page, in the status line of the terminal app, and as `warning:` lines from `repohub hosts`. Check your setup offline with `repohub hosts`.
+
+### Tokens per host
+
+| Host | Token |
+|---|---|
+| GitHub | `GITHUB_TOKEN`, then `GH_TOKEN`, then `gh auth token` |
+| GitLab | `GITLAB_TOKEN` |
+| Codeberg | `CODEBERG_TOKEN` |
+| Extra host | its `token_env` (default `REPOHUB_<ID>_TOKEN`) |
+
+A token is only ever sent to its own host.
+
+### What a Forgejo host shows
+
+- The license is shown as unknown, because the server does not expose it.
+- The server's search matches a single keyword. With several words, RepoHub sends the longest word and requires all words to match (in the name, description or topics) on your side.
+- Language, minimum stars and recency are filtered client-side, so a page of results can shrink.
+- Clone is allowed only from configured hosts.
+
+An extra host is a server you chose. What it reports (names, star counts, descriptions) is shown as it says, after control characters are stripped.
+
 ## 🔎 Search syntax
 
 The search box in the web app, the terminal app and the `repohub search` command all understand the same `key:value` tokens. Keys are case-insensitive; everything that is not a token is searched as plain words.
@@ -140,7 +191,7 @@ The search box in the web app, the terminal app and the `repohub search` command
 | `lang:rust` or `language:rust` | Language |
 | `stars:500` or `stars:>500` | Minimum stars (a leading `>` or `>=` is accepted and means "at least") |
 | `days:90` | Pushed within the last N days (`days:0` means no limit) |
-| `host:github`, `host:gitlab`, `host:both` | Which host to search |
+| `host:github`, `host:gitlab`, `host:codeberg`, `host:all` (or `host:both`) | Which host to search: any configured host id (see [Hosts](#-hosts)), or all of them. `both` is an alias for `all` |
 | `sort:stars`, `sort:updated`, `sort:forks` | Ordering |
 | `topic:cli` | Topic |
 | `nofork` | Hide forks |
@@ -151,6 +202,7 @@ terminal ui lang:go stars:>500 days:90 sort:updated nofork
 ```
 
 - `nofork` and `archived` are consumed as flags, so you cannot search for those words themselves.
+- An unknown `host:` value is reported as `Ignored: ...` and lists the configured ids.
 - An unknown `key:value` (for example `http:x`) stays in the search as ordinary words.
 - A token with a bad value is ignored and reported as `Ignored: ...` (a banner in the web app, the status line in the terminal app, stderr on the command line). The rest of the query still runs.
 - The web form also has sort and hide-forks controls. A token in the text overrides the matching form control.
@@ -160,7 +212,7 @@ terminal ui lang:go stars:>500 days:90 sort:updated nofork
 A shelf is a named group of repositories on the home page. There are two kinds:
 
 - **Search shelves** run a search (optional `topic`, `language`, `min_stars`, `days`). Six are packaged: Terminal tools, Local AI, Retro and emulation, Self-hosted, Creative coding and Networking.
-- **Curated shelves** list exact repositories. Eight packaged `Catalog: ...` shelves hold 171 curated repositories with the curator's one-line note for each, and stats snapshotted on 2026-09-20.
+- **Curated shelves** list exact repositories. Nine packaged `Catalog: ...` shelves hold curated repositories with the curator's one-line note for each: eight general shelves with 171 repositories (stats snapshotted on 2026-09-20), and `Catalog: Codeberg` with 18 repositories on Codeberg.
 
 Home-page tiles for curated shelves show the stored snapshots only (no API calls). Opening a shelf refreshes the entries you can see live: 12 per page in the web app, 25 per page in the terminal app (page with `[` and `]`). If refreshing an entry fails, its snapshot is kept. The web app marks such an entry "as of" the snapshot date and the CLI reports `"live": false` for it. The terminal app shows one shelf-level "as of" date in its status line and does not mark individual stale rows. After a host rate-limits a refresh, RepoHub stops refreshing that host's entries for at least 60 seconds (up to an hour, following the host's reset time) and shows their snapshots.
 
@@ -178,7 +230,7 @@ Personal shelves go in `shelves.yaml` in your user config directory (`~/.config/
 - name: Things I keep meaning to read   # a curated shelf
   as_of: '2026-09-20'
   repos:
-    - github:BurntSushi/ripgrep     # a plain string: host:owner/name
+    - github:BurntSushi/ripgrep     # a plain string: host:owner/name (any configured host id)
     - repo: gitlab:gitlab-org/cli   # or a mapping
       note: Official GitLab CLI.
       snapshot:
@@ -189,6 +241,7 @@ Personal shelves go in `shelves.yaml` in your user config directory (`~/.config/
         pushed_at: '2026-09-01'
 ```
 
+- A shelf entry for a host that is no longer configured stays stored. Opening the shelf shows its snapshot with `host not configured` instead of calling anything.
 - Quote dates (`'2026-09-20'`). Unquoted dates in `as_of` and `pushed_at` are accepted and converted, but other fields that should be text must be quoted.
 - Limits: the file may be at most 1 MB, with at most 200 shelves and 1000 entries per shelf. Entry numbers in error messages start at 0.
 - A broken personal file never stops RepoHub. The problem is shown (a banner in the web app, the status line in the terminal app, a `warning:` line on stderr in the CLI) and the whole personal file is skipped until you fix it. Only regular files are read.
@@ -198,18 +251,21 @@ Personal shelves go in `shelves.yaml` in your user config directory (`~/.config/
 `repohub` is a read-only command for scripts and quick lookups. It never clones, favorites or changes anything.
 
 ```
-repohub search TEXT... [--lang L] [--min-stars N] [--days N] [--host github|gitlab|both]
+repohub search TEXT... [--lang L] [--min-stars N] [--days N] [--host ID|all]
                        [--sort stars|updated|forks] [--no-forks] [--archived] [--limit N] [--json]
 repohub repo HOST:OWNER/NAME [--readme] [--json]
+repohub hosts [--json]
 repohub shelves [--json]
 repohub shelf NAME_OR_INDEX [--limit N] [--no-refresh] [--json]
 repohub favorites [--json]
 ```
 
-`search` accepts the [search syntax](#-search-syntax) in its text; tokens in the text override the flags. `--limit` is accepted from 1 to 200 for `search` (default 20), but each host returns at most 30 results per request, so a search shows about 60 rows at most; for `shelf` it is 1 to 50 (default 20). `shelf` takes an exact name (case-insensitive) or the index shown by `repohub shelves`; an argument made only of digits is an index when it is a valid one, otherwise it is matched as a name (with duplicate names the first shelf wins). It shows the first page only. `--no-refresh` makes a curated shelf use its stored snapshots with no API calls. `favorites` and `shelves` do not use the network.
+`search` accepts the [search syntax](#-search-syntax) in its text; tokens in the text override the flags. `--limit` is accepted from 1 to 200 for `search` (default 20), but each host returns at most 30 results per request, so a search shows about 30 rows per host at most; for `shelf` it is 1 to 50 (default 20). `shelf` takes an exact name (case-insensitive) or the index shown by `repohub shelves`; an argument made only of digits is an index when it is a valid one, otherwise it is matched as a name (with duplicate names the first shelf wins). It shows the first page only. `--no-refresh` makes a curated shelf use its stored snapshots with no API calls. `--host` takes `all` (or `both`) or any configured host id; it is checked after the arguments are parsed, and an unknown id is a usage error. `repo` accepts `HOST:OWNER/NAME` for any configured host. `favorites`, `shelves` and `hosts` do not use the network.
 
 ```bash
 repohub search "terminal ui lang:go stars:>500 nofork" --limit 10
+repohub hosts
+repohub search "terminal ui host:codeberg" --limit 10
 repohub shelves
 repohub shelf "Catalog: Terminal & TUI" --limit 5 --no-refresh
 repohub repo github:BurntSushi/ripgrep --json | jq -r '.release.assets[] | select(.arch == "arm64") | .name'
@@ -223,7 +279,10 @@ repohub repo github:BurntSushi/ripgrep --json | jq -r '.release.assets[] | selec
 | `shelf` (search shelf) | the same, plus `"shelf": name` |
 | `shelf` (curated) | the same, plus `"shelf"`; each repo also has `note`, `as_of` and `live` (`false` when the stored snapshot is shown) |
 | `shelves` | `{"schema_version": 1, "shelves": [{"index", "name", "kind", "entries"}]}` (`kind` is `search` or `curated`; `entries` is 0 for search shelves) |
+| `hosts` | `{"schema_version": 1, "hosts": [{"id", "kind", "name", "domain", "builtin", "token", "token_env"}], "problems": [...]}` (`token` is `true` or `false`; `token_env` lists variable names) |
 | `repo` | `{"schema_version": 1, "repo": {...}, "release": {"tag", "published_at", "assets": [{"name", "size", "url", "arch"}]} or null, "readme": text or null}` (`readme` only with `--readme`; `arch` is `arm64`, `x86_64` or `unknown`) |
+
+`repohub hosts` never prints token values: only `token: true/false` and the names of the variables to set. Problems with `hosts.yaml` appear as `warning:` lines on stderr and in `"problems"`.
 
 **Exit codes.** `0` success; `1` error (a host failed and there were no results, an unknown shelf or repository, an unexpected error, or a curated shelf refresh that failed for every entry even though snapshot rows were printed); `2` usage error (including a malformed `HOST:OWNER/NAME`); `3` partial success (some results, but a host reported an error, or a curated shelf refreshed only some entries); `130` interrupted. Table output cells are sanitised and truncated to keep lines readable.
 
@@ -237,15 +296,18 @@ flowchart LR
   end
   W --> H["Hub<br/>caching, stale fallback"]
   T --> H
-  H --> S["Search + shelves<br/>merge, rank, dedupe"]
+  H --> R["Host registry"]
+  R --> S["Search + shelves<br/>merge, rank, dedupe"]
   S --> GH["GitHub provider"]
   S --> GL["GitLab provider"]
+  S --> FJ["Forgejo provider<br/>Codeberg + hosts.yaml"]
   H --> DB[("SQLite<br/>cache + favorites")]
   H --> CL["Safe clone"]
 ```
 
-- **Providers** hide the differences between the two APIs, so both front ends only ever see one `Repo` shape.
-- **Search** queries both hosts concurrently, merges and ranks by stars, and reports per-host failures instead of failing the whole search.
+- **Hosts** are a registry: three built in, plus any extras from `hosts.yaml`. Search, shelves, favorites, the CLI and the clone allow-list all read it.
+- **Providers** hide the differences between the APIs, so both front ends only ever see one `Repo` shape.
+- **Search** queries all selected hosts concurrently, merges and ranks by stars, and reports per-host failures instead of failing the whole search.
 - **Hub** adds a 10-minute search cache and a 1-hour detail cache in SQLite, and falls back to stale results when a host is unreachable or rate-limited.
 - **Favorites and cache** live in a single SQLite file in your user data directory.
 
@@ -256,7 +318,9 @@ flowchart LR
 src/repohub/
   core/
     models.py       Repo, Release, Asset, SearchFilters
-    providers/      github.py, gitlab.py, base.py (errors, slug + URL validation)
+    hosts.py        host registry (built-in hosts, HostSpec, HostRegistry)
+    hostsconfig.py  loads and validates the personal hosts.yaml
+    providers/      github.py, gitlab.py, forgejo.py, base.py (errors, slug + URL validation)
     search.py       fan-out, merge, rank, dedupe
     queryparse.py   search syntax (key:value tokens)
     browse.py       packaged and personal shelves (search and curated)
@@ -264,7 +328,7 @@ src/repohub/
     cache.py        SQLite response cache with TTL
     store.py        favorites
     clone.py        safe git clone
-    auth.py         token discovery
+    auth.py         token discovery per host
     textsafe.py     control-character stripping for untrusted text
   web/              FastAPI app, templates, static files (htmx is vendored)
   tui/              Textual app
@@ -284,6 +348,9 @@ Tokens are optional but raise API rate limits. Without one, GitHub search allows
 |---|---|
 | GitHub token | `GITHUB_TOKEN`, then `GH_TOKEN`, then the output of `gh auth token` if the GitHub CLI is installed |
 | GitLab token | `GITLAB_TOKEN` |
+| Codeberg token | `CODEBERG_TOKEN` |
+| Extra host token | the host's `token_env`, by default `REPOHUB_<ID>_TOKEN` (see [Hosts](#-hosts)) |
+| Extra hosts | `~/.config/repohub/hosts.yaml` (see [Hosts](#-hosts)) |
 | Clone folder | `REPOHUB_CLONE_DIR` (default `~/playground`) |
 | Shelves | Packaged shelves ship with the app; add your own in `~/.config/repohub/shelves.yaml` (see [Shelves](#-shelves)) |
 | Cache and favorites | One SQLite file, `repohub.db`, in your user data directory (`~/.local/share/repohub/` on Linux) |
@@ -306,11 +373,15 @@ RepoHub renders untrusted data (descriptions, READMEs, release names) and runs `
 **Terminal app**
 - Renders all untrusted text as plain text (no markup interpretation) and opens links only when they are `http` or `https`.
 
+**Hosts**
+- `hosts.yaml` is treated as untrusted: strict URL validation, no IP literals, `REPOHUB_`-prefixed token variables only, size and count limits, duplicate keys rejected.
+- A token is sent only to its own host, and redirects are not followed.
+
 **Data**
 - Control characters and bidirectional-override characters are stripped from provider data at the boundary; README text is capped at 200,000 characters.
 
 **Clone**
-- Only `https` URLs on `github.com` or `gitlab.com`; strict validation, then the URL is rebuilt in canonical form.
+- Only `https` URLs on a configured host (`github.com`, `gitlab.com`, `codeberg.org` and the hosts in your `hosts.yaml`); strict validation, then the URL is rebuilt in canonical form.
 - Shallow (`--depth 1`); no install or build steps are run.
 - Git runs with a locked-down environment: no prompts, https-only protocol, no system or global git config (`GIT_CONFIG_GLOBAL=/dev/null`, so proxy or credential-helper setups must be passed through environment variables).
 - The destination must sit directly inside the chosen folder, an existing folder is never overwritten, concurrent clones of the same target are refused, and a failed clone cleans up only what it created.
@@ -321,7 +392,7 @@ RepoHub renders untrusted data (descriptions, READMEs, release names) and runs `
 
 ```bash
 .venv/bin/pytest            # offline suite (live tests are deselected)
-.venv/bin/pytest -m live    # opt-in smoke tests against the real GitHub and GitLab APIs
+.venv/bin/pytest -m live    # opt-in smoke tests against the real GitHub, GitLab and Codeberg APIs
 ```
 
 The offline suite uses mocked HTTP and fake providers, so it needs no network, no tokens and no real `git`. The live tests use a token found as described above, or run anonymously and may hit rate limits. CI runs the offline suite on Python 3.11 and 3.12.
@@ -336,8 +407,8 @@ RepoHub grows in phases. Each phase gets a written design, a task-by-task plan, 
 |---|---|---|
 | **v1** | Cross-host search, shelves, repo pages, favorites, safe clone, web app and terminal app | ✅ Done (13 tasks) |
 | **1. Foundations** | Filters and sorting everywhere, curated shelves and the 171-project catalog, the scriptable CLI (v0.2.0) | ✅ Done (13 tasks) |
-| **2. Other hosts** | A host registry and a Forgejo/Gitea provider: Codeberg built in, plus any Forgejo or Gitea instance you add in a config file | 🔨 Next |
-| **3. Accounts and login** | Uses the sign-ins you already have (env variables, `gh` CLI) and stores nothing; an Accounts page shows who you are on each host, where the token came from, its scopes and rate limit | 📝 Planned |
+| **2. Other hosts** | A host registry and a Forgejo/Gitea provider: Codeberg built in, plus any Forgejo or Gitea instance you add in a config file (v0.3.0) | ✅ Done (10 tasks) |
+| **3. Accounts and login** | Uses the sign-ins you already have (env variables, `gh` CLI) and stores nothing; an Accounts page shows who you are on each host, where the token came from, its scopes and rate limit | 🔨 Next |
 | **4. Star and fork** | Star, unstar and fork from the web and terminal apps, always confirmed, with a local action log. The CLI stays read-only | 📝 Planned |
 | **5. Recommendations** | Suggestions from your favorites, your stars, an opt-in local history, and "similar to this repo", all computed on your machine | 📝 Planned |
 | **6. Machine awareness** | "Already cloned" badges, a "Can I run this here?" panel (arm64 release assets, installed toolchains), and a shared project detector | ⏸️ Paused |
@@ -387,9 +458,25 @@ Standing rules for every phase: the existing clone protections stay as they are;
 </details>
 
 <details>
+<summary><b>Tasks: Phase 2, Other hosts (all done)</b></summary>
+
+1. ✅ Host registry
+2. ✅ The `hosts.yaml` loader
+3. ✅ Read the registry everywhere the host list was hard-coded
+4. ✅ The Forgejo/Gitea provider
+5. ✅ Build providers and tokens from the registry
+6. ✅ Web app
+7. ✅ Terminal app and CLI
+8. ✅ A Codeberg shelf and unavailable hosts
+9. ✅ Opt-in live tests for Codeberg
+10. ✅ Docs, version and final verification
+
+</details>
+
+<details>
 <summary><b>Sketch of the next phases</b> (each phase's real task list is written in its own plan)</summary>
 
-- **Phase 2, other hosts:** a host registry replacing the hard-coded GitHub and GitLab pair; a Forgejo/Gitea provider (search, README, releases); Codeberg built in; extra instances in `~/.config/repohub/hosts.yaml` with strict URL validation; search, shelves, favorites, the CLI and the clone allow-list all reading the registry.
+- **Phase 2, other hosts (done):** a host registry replacing the hard-coded GitHub and GitLab pair; a Forgejo/Gitea provider (search, README, releases); Codeberg built in; extra instances in `~/.config/repohub/hosts.yaml` with strict URL validation; search, shelves, favorites, the CLI and the clone allow-list all reading the registry.
 - **Phase 3, accounts and login:** token discovery per host; identity, scope and rate-limit lookups; an Accounts page in the web app, a key in the terminal app and a read-only `repohub accounts` command; nothing stored on disk.
 - **Phase 4, star and fork:** star, unstar and fork for GitHub, GitLab and Forgejo; a confirmation naming the host, repository and account; no automatic retries; a local action log.
 - **Phase 5, recommendations:** an interest profile from favorites, stars and an opt-in history; a "Recommended for you" shelf, "Similar repositories" on repo pages, and read-only `repohub recommend` and `repohub similar` commands; every suggestion explains why.
@@ -403,7 +490,8 @@ Standing rules for every phase: the existing clone protections stay as they are;
 
 ## ⚠️ Known limitations
 
-- Results from the two hosts are deduplicated by `owner/name`, so different repositories that share an owner and name across hosts are merged.
+- Results from the three hosts (and any extra ones) are deduplicated by `owner/name`, so different repositories that share an owner and name across hosts are merged.
+- Forgejo servers vary by version; Codeberg was checked. Forgejo search matches one keyword on the server and cannot filter by language, stars or recency there, so RepoHub filters client-side and a page can shrink. The license is unknown.
 - GitLab search results carry no language unless you filter by language, and its minimum-stars filter is applied client-side, so a page of results can shrink.
 - Recency filters drop repositories with an unknown push date.
 - Curated shelf refreshes use extra API requests (a bounded number per page, cached for one hour). Without a token GitHub allows only about 60 core requests per hour, so keep a token set for heavy browsing.
@@ -413,7 +501,7 @@ Standing rules for every phase: the existing clone protections stay as they are;
 - GitLab cannot sort by forks or hide forks server-side, so those options only apply to the results that were fetched.
 - Remote images in READMEs can load in the web app (the CSP allows `img-src *`), which shows your IP address to those hosts.
 - The cache is never purged; expired entries are only overwritten.
-- Not included yet: other hosts (Codeberg and other Forgejo or Gitea servers are Phase 2; Bitbucket is not planned), accounts and login, starring or forking from inside the app, and recommendations. See the [roadmap](#-roadmap) for what is planned.
+- Not included yet: accounts and login, starring or forking from inside the app, and recommendations. Bitbucket is not planned. See the [roadmap](#-roadmap) for what is planned.
 
 ## 📜 License
 

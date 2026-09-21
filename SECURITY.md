@@ -12,10 +12,12 @@ Helpful details: what you did, what you expected, what happened, the RepoHub ver
 
 - Script or markup injection through repository data in the web app or the terminal app.
 - Bypassing the session-token, Host-header or Content-Security-Policy protections of the web app.
-- Anything that makes `clone` run outside the chosen folder, contact a host other than `github.com` or `gitlab.com`, run install or build steps, or delete files it did not create.
+- Anything that makes `clone` run outside the chosen folder, contact a host that is not configured (the built-in `github.com`, `gitlab.com` and `codeberg.org`, plus hosts from `hosts.yaml`), run install or build steps, or delete files it did not create.
 - The search-query parser (`lang:`, `stars:` and the other tokens) in the web app, the terminal app and the CLI: injection through echoed problem messages, and resource use on hostile input.
 - The personal shelves file (`shelves.yaml`) and the rendering of curated notes and snapshots: parsing, size limits, unsafe file types, and markup or control characters in text.
 - The CLI's JSON and text output: control and bidirectional characters, JSON escaping, and anything that could print secrets.
+- The personal hosts file (`hosts.yaml`): parsing, size limits, unsafe file types, duplicate keys, and URL validation (https only; no credentials, port, path, IP literals or `localhost`). Also the token-variable rule (extra hosts may only use `REPOHUB_*_TOKEN` variables, so a config file cannot bind an unrelated secret to a host) and the unique-host and unique-token checks.
+- The Forgejo/Gitea provider: token isolation between hosts (a token is sent only to its own host), redirects not being followed, the clone allow-list, and hostile or malformed responses from a configured server (slugs, numbers, URLs and text are validated and cleaned at the boundary).
 - Leaking API tokens (logs, error pages, cache, outgoing requests to the wrong host).
 
 ## Design notes

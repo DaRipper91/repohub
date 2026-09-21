@@ -387,7 +387,7 @@ async def test_placeholder_documents_syntax(tmp_path):
     async with app.run_test() as pilot:
         await pilot.pause()
         assert app.query_one(Input).placeholder == (
-            "Search GitHub and GitLab (e.g. tui lang:rust stars:500 days:90 host:github sort:updated nofork)")
+            "Search repositories (e.g. tui lang:rust stars:500 days:90 host:codeberg sort:updated nofork)")
 
 
 async def test_hostile_problem_text_is_shown_literally(tmp_path):
