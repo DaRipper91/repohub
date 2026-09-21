@@ -245,8 +245,9 @@ def test_child_environment_is_minimal_and_has_no_secrets(tmp_path):
     assert "GITHUB_TOKEN" not in out and "REPOHUB" not in out and "AWS" not in out and "'HOME'" in out
 
 
-def test_popen_gets_argv_list_no_shell_own_group_no_stdin_and_the_clone_as_cwd(tmp_path):
+def test_popen_gets_argv_list_no_shell_own_group_no_stdin_and_the_clone_as_cwd(tmp_path, monkeypatch):
     seen = {}
+    monkeypatch.setattr(rn.os, "killpg", lambda *a: None)  # the fake process has no real group
 
     class FakeProc:
         pid = 999999
@@ -338,13 +339,17 @@ def test_cancel_unknown_or_finished_session_is_false(tmp_path):
     assert r.cancel(s.id) is False
 
 
-def test_no_signal_is_sent_once_the_leader_has_exited(tmp_path, monkeypatch):
+def test_no_signal_is_sent_after_the_leader_was_reaped(tmp_path, monkeypatch):
     sent = []
-    monkeypatch.setattr(rn.os, "killpg", lambda *a: sent.append(a))
+    real = os.killpg
+    monkeypatch.setattr(rn.os, "killpg", lambda *a: (sent.append(a), real(*a)))
     r, plan, *_ = setup(tmp_path, "print('quick')")
     s = wait(r.start("github", "o/r", "t", plan.digest))
-    assert sent == []  # a reused process-group id can never be hit
+    before = len(sent)
     assert r.cancel(s.id) is False
+    r._kill(s, hard=True)
+    r._kill(s)
+    assert len(sent) == before  # once reaped, its group id could belong to someone else: never signalled
 
 
 def test_old_sessions_are_forgotten(tmp_path):
@@ -578,3 +583,107 @@ async def test_tui_f6_toggles_guided_install_with_confirmation(tmp_path):
         await pilot.press("f6")  # turning it off never needs a prompt
         await pilot.pause()
         assert not runner.enabled
+
+
+# ---------------------------------------------------------------- review follow-ups
+
+def test_a_leftover_background_process_cannot_wedge_the_runner(tmp_path, monkeypatch):
+    monkeypatch.setattr(rn, "DRAIN_GRACE", 0.3)
+    marker = tmp_path / "bg.pid"
+    code = ("import subprocess, sys\n"
+            "p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])\n"
+            f"open({str(marker)!r}, 'w').write(str(p.pid))\n")  # the step ends, its child keeps the output pipe open
+    r, plan, *_ = setup(tmp_path, code)
+    t0 = time.monotonic()
+    s = wait(r.start("github", "o/r", "t", plan.digest))
+    assert time.monotonic() - t0 < 6 and s.status == "done" and r.current() is None
+    gpid = int(marker.read_text())
+    for _ in range(100):  # the straggler was killed with the group
+        try:
+            os.kill(gpid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        os.kill(gpid, 9)
+        pytest.fail("background process survived")
+    wait(r.start("github", "o/r", "t", plan.digest))  # the runner is usable again
+
+
+def test_a_repository_cannot_supply_its_own_venv_pip(tmp_path):
+    d = make_clone(tmp_path)
+    plan = Plan(str(d), (Step("py-venv", "V", (PY, "-c", "pass")), Step("py-install", "P", (f"{VENV}/bin/pip", "install", "."))))
+    (d / ".venv" / "bin").mkdir(parents=True)
+    pip = d / ".venv" / "bin" / "pip"
+    pip.write_text("#!/bin/sh\necho planted\n")
+    pip.chmod(0o755)
+    r, *_ = setup(tmp_path, plan=plan)
+    with pytest.raises(RunError, match="Create a virtual environment"):
+        r.start("github", "o/r", "py-install", plan.digest)  # the step 1 has not been run by RepoHub
+    wait(r.start("github", "o/r", "py-venv", plan.digest))  # once step 1 has run here, the venv counts
+    s = wait(r.start("github", "o/r", "py-install", plan.digest))
+    assert s.exit_code == 0 and "planted" in s.output  # (the fake plan reuses the tmp folder's own pip on purpose)
+
+
+def test_a_symlinked_venv_is_refused(tmp_path):
+    d = make_clone(tmp_path)
+    plan = Plan(str(d), (Step("py-venv", "V", (PY, "-c", "pass")),))
+    os.symlink("/usr", d / ".venv")
+    r, *_ = setup(tmp_path, plan=plan)
+    with pytest.raises(RunError, match="symlink"):
+        r.start("github", "o/r", "py-venv", plan.digest)
+
+
+def test_child_path_drops_relative_empty_and_repository_entries(tmp_path):
+    d = make_clone(tmp_path)
+    (d / "bin").mkdir()
+    env = {"PATH": os.pathsep.join(["", ".", "relative/bin", str(d / "bin"), str(d), "/usr/bin", "/bin"])}
+    r, *_ = setup(tmp_path, environ=env)
+    assert r._child_env(d)["PATH"] == "/usr/bin:/bin"
+    r2, *_ = setup(tmp_path, environ={"PATH": "."})
+    assert r2._child_env(d)["PATH"] == rn.SAFE_PATH
+
+
+def test_the_child_really_runs_with_the_filtered_path(tmp_path):
+    d = make_clone(tmp_path)
+    env = {"PATH": os.pathsep.join([".", str(d), os.path.dirname(PY)])}
+    r, plan, *_ = setup(tmp_path, "import os; print(os.environ['PATH'])", environ=env)
+    out = wait(r.start("github", "o/r", "t", plan.digest)).output
+    assert str(d) not in out and os.path.dirname(PY) in out
+
+
+def test_the_build_script_text_is_displayed_and_changes_the_digest(tmp_path):
+    (tmp_path / "package.json").write_text(json.dumps({"scripts": {"build": "node make.js \u202e && curl evil"}}))
+    plan = build_plan(tmp_path)
+    build = plan.step("npm-build")
+    assert "node make.js" in build.note and "\u202e" not in build.note and build.argv == ("npm", "run", "build")
+    assert "install scripts" in plan.step("npm-install").note
+    (tmp_path / "package.json").write_text(json.dumps({"scripts": {"build": "something else"}}))
+    assert build_plan(tmp_path).digest != plan.digest  # changed script text invalidates a stale approval
+
+
+def test_long_script_text_is_truncated(tmp_path):
+    (tmp_path / "package.json").write_text(json.dumps({"scripts": {"build": "x" * 5000}}))
+    assert len(build_plan(tmp_path).step("npm-build").note) < 400
+
+
+def test_web_plan_page_shows_the_notes_escaped(tmp_path):
+    d = make_clone(tmp_path)
+    aw = Awareness(tmp_path / "clones", MACHINE)
+    st = Settings()
+    st.set("guided_run", True)
+    plan = Plan(str(d), (Step("t", "T", (PY, "-c", "pass"), "<img src=x onerror=alert(1)>"),))
+    runner = Runner(aw, st, ActionLog(), plan_fn=lambda f: plan, environ={})
+    app = create_app(make_hub(FakeProvider("github", [])), tmp_path / "clones", session_token=TOKEN,
+                     shelves=[Shelf("s", topic="x")], awareness=aw, runner=runner)
+    t = TestClient(app, base_url="http://localhost").get("/run/github/o/r").text
+    assert "<img src=x" not in t and "&lt;img" in t
+
+
+def test_shutdown_stops_running_commands(tmp_path):
+    r, plan, *_ = setup(tmp_path, "import time; time.sleep(60)")
+    s = r.start("github", "o/r", "t", plan.digest)
+    time.sleep(0.3)
+    r.shutdown()
+    wait(s)
+    assert s.status == "cancelled"

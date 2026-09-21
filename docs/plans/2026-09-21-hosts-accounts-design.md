@@ -27,7 +27,7 @@ After Phase 1 (v0.2.0) the owner asked to work next on the README's "Not include
 | **4. Star and fork** | Star, unstar and fork from the web and terminal apps, always confirmed, with a local action log | Done (v0.5.0) |
 | **5. Recommendations** | Favorites, stars, opt-in history and "similar repos", all computed locally | Done (v0.6.0) |
 | 6. Machine awareness | "Already cloned" badges (scan the clone folder only), "Can I run this here?" panel, project detector | Done (v0.7.0; checklist plus one-line verdict) |
-| 7. Guided install and run | Approve each command; runs the repository's own code | Planned |
+| 7. Guided install and run | Approve each command; runs the repository's own code | Done (v0.9.0) |
 | 8. Favorites 2.0 | Tags, notes, collections, new-releases tab | Planned |
 | 9. Claude Code | Read-only MCP server, "Open in Claude Code", `/repohub` skill | Planned |
 | 10. UI redesign | Look of the web and terminal apps | Planned, last |

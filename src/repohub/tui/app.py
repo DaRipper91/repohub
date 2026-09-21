@@ -91,7 +91,7 @@ class RunScreen(Screen):
             return
         info.update(f"{clone.path}\n{WARNING}\nEnter = review and approve one command.")
         for st in self.plan.steps:
-            t.add_row(Text(st.title), Text(st.text()), key=st.id)
+            t.add_row(Text(st.title), Text(st.text() + (f"   ({st.note})" if st.note else "")), key=st.id)
         if not self.plan.steps:
             info.update("No standard build command is known for this project.")
         self.set_interval(0.5, self._tick)
@@ -104,7 +104,8 @@ class RunScreen(Screen):
         step = self.plan.step(event.row_key.value or "") if self.plan else None
         if step is None:
             return
-        text = f"Run this command in the cloned folder?\n\n  {step.text()}\n\n{WARNING}"
+        note = f"\n{step.note}" if step.note else ""
+        text = f"Run this command in the cloned folder?\n\n  {step.text()}{note}\n\n{WARNING}"
 
         def done(ok: bool | None) -> None:
             if not ok:

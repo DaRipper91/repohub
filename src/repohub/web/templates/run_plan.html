@@ -16,7 +16,7 @@
   {% if plan.steps %}
   <ol class="steps">
   {% for st in plan.steps %}
-    <li><strong>{{ st.title }}</strong><br><code>{{ st.text() }}</code>
+    <li><strong>{{ st.title }}</strong><br><code>{{ st.text() }}</code>{% if st.note %}<br><span class="dim">{{ st.note }}</span>{% endif %}
       <form method="post" action="/runstart" class="inline">
         <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="host" value="{{ host }}"><input type="hidden" name="slug" value="{{ slug }}">
         <input type="hidden" name="step" value="{{ st.id }}"><input type="hidden" name="digest" value="{{ plan.digest }}">
