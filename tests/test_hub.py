@@ -446,3 +446,21 @@ async def test_hub_shelf_curated_returns_first_page_repos():
     bad = make_hub(FakeProvider("github", detail_error=ProviderError("github", "down")))
     res = await bad.shelf(curated(30))
     assert res.errors == {"github": "down"} and res.repos[0].description == "snap0"
+
+
+async def test_curated_page_refresh_false_never_calls_provider_and_uses_snapshots():
+    gh = live_provider(n=5)
+    hub = make_hub(gh)
+    page = await hub.curated_page(curated(5), 0, 12, refresh=False)
+    assert gh.calls == 0 and page.errors == {} and page.total == 5
+    for i, item in enumerate(page.items):
+        assert item.live is False and item.as_of == "2026-09-01" and item.note == f"note{i}"
+        assert item.repo.stars == 100 + i and item.repo.description == f"snap{i}"
+
+
+async def test_curated_page_refresh_false_ignores_cache_and_unknown_hosts():
+    hub = make_hub()  # no providers at all: still no error
+    page = await hub.curated_page(curated(3, host="gitlab"), 3, 12, refresh=False)
+    assert page.errors == {} and page.items == []
+    page = await hub.curated_page(curated(3, host="gitlab"), 0, 2, refresh=False)
+    assert len(page.items) == 2 and page.errors == {} and not any(i.live for i in page.items)

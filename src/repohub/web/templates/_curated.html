@@ -1,0 +1,13 @@
+{% for host, msg in page.errors.items() %}<p class="banner warn">{{ host }}: {{ msg }}</p>{% endfor %}
+<div class="grid">
+{% for item in page.items %}{% set r = item.repo %}
+  <a class="card" href="/repo/{{ r.host }}/{{ r.slug }}">
+    <div class="name">{{ r.slug }} <span class="badge {{ r.host }}">{{ r.host }}</span></div>
+    {% if item.note %}<p class="note">{{ item.note }}</p>{% endif %}
+    <p>{{ r.description }}</p>
+    <div class="meta">★ {{ r.stars }} · {{ r.language or "n/a" }} · {{ r.license or "no license" }}{% if not item.live %} · <span class="dim">as of {{ item.as_of or "unknown" }}</span>{% endif %}</div>
+  </a>
+{% else %}
+  <p class="dim">No entries.</p>
+{% endfor %}
+</div>

@@ -12,3 +12,4 @@ main{max-width:1100px;margin:0 auto;padding:16px}h1,h2,h3{color:var(--lav)}.grid
 .layout{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:20px}.layout>*{min-width:0}.readme{overflow-wrap:anywhere}.readme img{max-width:100%;height:auto}.readme pre{overflow-x:auto;padding:10px;background:#181825;border-radius:8px}.readme table{display:block;overflow-x:auto}aside{overflow-wrap:anywhere}.searchbar .num{width:6.5em}.searchbar input[name=language]{width:8em}
 .tag{background:#3a3a55;border-radius:6px;padding:1px 6px;font-size:.85em}.actions{display:flex;gap:8px;margin:12px 0}
 @media (max-width:760px){.layout{grid-template-columns:1fr}}
+.note{color:var(--lav);font-style:italic}.pager{display:flex;gap:16px;align-items:center;margin-top:16px}

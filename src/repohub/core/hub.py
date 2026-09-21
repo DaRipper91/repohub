@@ -102,10 +102,14 @@ class Hub:
         self.cache.set(key, repo.to_dict(), DETAIL_TTL)
         return repo
 
-    async def curated_page(self, shelf: Shelf, offset: int = 0, limit: int = CURATED_PAGE) -> CuratedPage:
+    async def curated_page(self, shelf: Shelf, offset: int = 0, limit: int = CURATED_PAGE, *,
+                           refresh: bool = True) -> CuratedPage:
         offset = max(0, offset)
         limit = min(max(1, limit), MAX_CURATED_LIMIT)
         entries = shelf.repos[offset:offset + limit]
+        if not refresh:  # snapshot-only: no provider call, no errors (protects the API rate limit)
+            return CuratedPage([CuratedItem(repo_from_snapshot(e, shelf.as_of), e.note, shelf.as_of, False)
+                                for e in entries], len(shelf.repos), offset, limit, {})
         sem = asyncio.Semaphore(REFRESH_CONCURRENCY)
 
         async def one(entry: ShelfEntry) -> tuple[Repo | None, str | None]:

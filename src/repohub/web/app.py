@@ -7,7 +7,7 @@ import secrets
 from pathlib import Path
 
 import nh3
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
@@ -16,9 +16,10 @@ from markdown_it import MarkdownIt
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from repohub.core.browse import load_shelves
+from repohub.core.browse import load_all_shelves
 from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_clone
 from repohub.core.models import SORTS, SearchFilters
+from repohub.core.hub import CURATED_PAGE
 from repohub.core.providers.base import NotFound, ProviderError, valid_slug
 from repohub.core.queryparse import parse_query
 
@@ -26,6 +27,7 @@ HERE = Path(__file__).parent
 HOSTS = ("github", "gitlab")
 CSP = ("default-src 'self'; img-src * data:; style-src 'self' 'unsafe-inline'; script-src 'self'; "
        "frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
+MAX_BANNERS = 10
 _md = MarkdownIt("commonmark", {"html": False})
 
 
@@ -58,7 +60,11 @@ def _refresh_done(tasks: set):
 def create_app(hub, clone_root, session_token: str | None = None, shelves=None, cloner=do_clone,
                allowed_hosts=("127.0.0.1", "localhost")) -> FastAPI:
     token = session_token or secrets.token_urlsafe(32)
-    shelf_list = load_shelves() if shelves is None else shelves
+    if shelves is None:
+        loaded = load_all_shelves()
+        shelf_list, problems = list(loaded.shelves), list(loaded.problems)
+    else:
+        shelf_list, problems = shelves, []
     templates = Jinja2Templates(directory=str(HERE / "templates"))
     refresh_tasks: set[asyncio.Task] = set()
 
@@ -70,6 +76,7 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
 
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.state.refresh_tasks = refresh_tasks
+    app.state.shelf_problems = problems
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=list(allowed_hosts))
     app.mount("/static", StaticFiles(directory=str(HERE / "static")), name="static")
 
@@ -98,13 +105,34 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
 
     @app.get("/", response_class=HTMLResponse)
     async def home(request: Request):
-        return page(request, "home.html", shelves=list(enumerate(shelf_list)))
+        return page(request, "home.html", shelves=list(enumerate(shelf_list)), problems=problems[:MAX_BANNERS])
 
     @app.get("/shelf/{index}", response_class=HTMLResponse)
     async def shelf(request: Request, index: int):
         if not 0 <= index < len(shelf_list):
             raise HTTPException(404, "no such shelf")
-        return page(request, "_results.html", result=await hub.shelf(shelf_list[index]), limit=6)
+        s = shelf_list[index]
+        if s.curated:  # snapshots only: the home page must not spend API rate limit
+            return page(request, "_curated.html", page=await hub.curated_page(s, 0, 6, refresh=False))
+        return page(request, "_results.html", result=await hub.shelf(s), limit=6)
+
+    @app.get("/shelves/{index}", response_class=HTMLResponse)
+    async def shelf_page(request: Request, index: int, page_no: str = Query("1", alias="page")):
+        if not 0 <= index < len(shelf_list):
+            raise HTTPException(404, "no such shelf")
+        s = shelf_list[index]
+        pages = max(1, -(-len(s.repos) // CURATED_PAGE)) if s.curated else 1
+        raw = (page_no or "").strip() or "1"
+        if not raw.isascii() or not raw.isdigit() or not 1 <= int(raw) <= pages:
+            raise HTTPException(404, "no such page")
+        n = int(raw)
+        if s.curated:
+            cp = await hub.curated_page(s, (n - 1) * CURATED_PAGE, CURATED_PAGE)
+            first, last = cp.offset + 1, cp.offset + len(cp.items)
+            return page(request, "shelf.html", index=index, shelf=s, page=cp, page_no=n, pages=pages,
+                        first=first, last=last)
+        return page(request, "shelf.html", index=index, shelf=s, result=await hub.shelf(s), limit=None,
+                    page_no=1, pages=1)
 
     @app.get("/search", response_class=HTMLResponse)
     async def search(request: Request, q: str = "", language: str = "", min_stars: str = "",

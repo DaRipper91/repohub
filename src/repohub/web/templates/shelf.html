@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ shelf.name }} - RepoHub{% endblock %}
+{% block body %}
+<h2>{{ shelf.name }}</h2>
+{% if shelf.curated %}
+{% include "_curated.html" %}
+<nav class="pager" aria-label="Shelf pages">
+  {% if page_no > 1 %}<a href="/shelves/{{ index }}?page={{ page_no - 1 }}">Previous</a>{% endif %}
+  <span class="dim">showing {{ first }}-{{ last }} of {{ page.total }}</span>
+  {% if page_no < pages %}<a href="/shelves/{{ index }}?page={{ page_no + 1 }}">Next</a>{% endif %}
+</nav>
+{% else %}
+{% include "_results.html" %}
+{% endif %}
+{% endblock %}

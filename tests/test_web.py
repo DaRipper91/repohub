@@ -342,3 +342,136 @@ def test_search_problem_banners_are_escaped_and_capped(fp):
     many = " ".join(f"stars:x{i}" for i in range(40))
     r = client.get("/search", params={"q": many})
     assert r.text.count("Ignored:") <= 11
+
+
+# ---- curated shelves and shelf pages (Task 10) ----
+from repohub.core.browse import LoadedShelves, ShelfEntry, Snapshot  # noqa: E402
+
+XSS = '<script>alert(1)</script>'
+IMG = '"><img src=x onerror=alert(2)>'
+
+
+def _entries(n, note=lambda i: f"note{i}", desc=lambda i: f"snapdesc{i}"):
+    return tuple(ShelfEntry("github", f"o/r{i}", note(i), Snapshot(desc(i), 100 + i, "Go", "MIT", "2026-08-01"))
+                 for i in range(n))
+
+
+def _curated_app(tmp_path, n=30, name="Curated one", provider=None, problems=None, extra=(), **kw):
+    gh = provider or FakeProvider("github", [mk("github", f"o/r{i}", 999, description="livedesc") for i in range(n)])
+    shelf = Shelf(name=name, repos=_entries(n, **kw), as_of="2026-09-01")
+    if problems is None:
+        app = create_app(make_hub(gh), tmp_path, session_token=TOKEN, shelves=[shelf, *extra])
+    else:
+        import repohub.web.app as webapp
+        webapp_load = webapp.load_all_shelves
+        webapp.load_all_shelves = lambda: LoadedShelves([shelf, *extra], problems)
+        try:
+            app = create_app(make_hub(gh), tmp_path, session_token=TOKEN)
+        finally:
+            webapp.load_all_shelves = webapp_load
+    return TestClient(app, base_url="http://localhost"), gh
+
+
+def test_home_has_see_all_links_and_curated_tiles_are_not_staggered(tmp_path):
+    search = Shelf("Search one", topic="tui", min_stars=10)
+    client, _ = _curated_app(tmp_path, 3, extra=(search,))
+    html = client.get("/").text
+    assert 'href="/shelves/0"' in html and 'href="/shelves/1"' in html
+    assert 'hx-get="/shelf/0" hx-trigger="load"' in html  # curated: no delay
+    assert 'hx-get="/shelf/1" hx-trigger="load delay:400ms"' in html
+
+
+def test_home_stagger_is_capped(tmp_path):
+    shelves = [Shelf(f"S{i}", topic="tui", min_stars=10) for i in range(13)]
+    app = create_app(make_hub(FakeProvider("github")), tmp_path, session_token=TOKEN, shelves=shelves)
+    html = TestClient(app, base_url="http://localhost").get("/").text
+    assert 'delay:2000ms' in html and 'delay:4800ms' not in html
+
+
+def test_home_shows_problem_banners_escaped_and_capped(tmp_path):
+    problems = [f"bad{i} {XSS} {IMG}" for i in range(15)]
+    client, _ = _curated_app(tmp_path, 2, problems=problems)
+    html = client.get("/").text
+    assert html.count('class="banner warn"') == 10 and "bad9" in html and "bad10" not in html
+    assert XSS not in html and "<img" not in html and "&lt;script&gt;" in html
+
+
+def test_home_without_problems_has_no_banners(setup):
+    client, *_ = setup
+    assert 'class="banner warn"' not in client.get("/").text
+
+
+def test_home_tile_is_snapshot_only_with_notes_and_as_of(tmp_path):
+    client, gh = _curated_app(tmp_path, 10)
+    html = client.get("/shelf/0").text
+    assert gh.calls == 0
+    assert html.count('class="card"') == 6 and "note0" in html and "note5" in html and "note6" not in html
+    assert "snapdesc0" in html and "livedesc" not in html and "as of 2026-09-01" in html
+    assert 'href="/repo/github/o/r0"' in html
+
+
+def test_full_page_live_has_no_marker_and_shows_notes(tmp_path):
+    client, gh = _curated_app(tmp_path, 5)
+    html = client.get("/shelves/0").text
+    assert gh.calls == 5 and "livedesc" in html and "note3" in html and "as of" not in html
+    assert "showing 1-5 of 5" in html
+
+
+def test_full_page_refresh_failure_shows_snapshot_marker_and_banner(tmp_path):
+    gh = FakeProvider("github", detail_error=ProviderError("github", "rate limited"))
+    client, _ = _curated_app(tmp_path, 3, provider=gh)
+    r = client.get("/shelves/0")
+    assert r.status_code == 200
+    assert "snapdesc1" in r.text and "as of 2026-09-01" in r.text
+    assert "github: rate limited" in r.text and 'class="banner warn"' in r.text
+
+
+def test_pagination_pages_and_links(tmp_path):
+    client, _ = _curated_app(tmp_path, 30)
+    p1 = client.get("/shelves/0").text
+    assert "showing 1-12 of 30" in p1 and "note11" in p1 and "note12" not in p1
+    assert "?page=2" in p1 and "?page=0" not in p1 and "Previous" not in p1
+    p2 = client.get("/shelves/0", params={"page": "2"}).text
+    assert "showing 13-24 of 30" in p2 and "note12" in p2
+    assert "?page=1" in p2 and "?page=3" in p2
+    p3 = client.get("/shelves/0", params={"page": "3"}).text
+    assert "showing 25-30 of 30" in p3 and "?page=2" in p3 and "?page=4" not in p3 and "Next" not in p3
+
+
+@pytest.mark.parametrize("bad", ["0", "-1", "4", "999", "abc", "1.5", "99999999999999999999999"])
+def test_bad_page_is_404_html_not_500(tmp_path, bad):
+    client, _ = _curated_app(tmp_path, 30)
+    r = client.get("/shelves/0", params={"page": bad})
+    assert r.status_code == 404 and 'class="banner"' in r.text
+
+
+def test_empty_page_param_means_first_page_and_bad_index_404(tmp_path):
+    client, _ = _curated_app(tmp_path, 30)
+    assert client.get("/shelves/0", params={"page": ""}).status_code == 200
+    assert client.get("/shelves/1").status_code == 404
+    assert client.get("/shelves/-1").status_code == 404
+
+
+def test_search_shelf_full_page_lists_results(setup):
+    client, *_ = setup
+    r = client.get("/shelves/0")
+    assert r.status_code == 200 and "Terminal tools" in r.text and "o/r" in r.text
+    assert "<script>alert(1)</script>" not in r.text
+    assert client.get("/shelves/0", params={"page": "2"}).status_code == 404  # a search shelf has one page
+
+
+def test_curated_untrusted_text_is_escaped_everywhere(tmp_path):
+    client, _ = _curated_app(tmp_path, 3, name=f"Name {XSS}{IMG}",
+                             provider=FakeProvider("github", detail_error=ProviderError("github", f"err {XSS}")),
+                             note=lambda i: f"n {XSS}{IMG}", desc=lambda i: f"d {XSS}{IMG}")
+    for url in ("/", "/shelf/0", "/shelves/0"):
+        html = client.get(url).text
+        assert "<script>" not in html and "<img" not in html
+    assert "&lt;script&gt;" in client.get("/shelves/0").text
+    assert "&lt;script&gt;" in client.get("/").text
+
+
+def test_curated_links_are_built_from_validated_entries(tmp_path):
+    client, _ = _curated_app(tmp_path, 2)
+    html = client.get("/shelves/0").text
+    assert 'href="/repo/github/o/r0"' in html and 'href="/repo/github/o/r1"' in html

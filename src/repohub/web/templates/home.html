@@ -1,9 +1,10 @@
 {% extends "base.html" %}
 {% block body %}
+{% for problem in problems or [] %}<p class="banner warn">{{ problem }}</p>{% endfor %}
 {% for i, s in shelves %}
 <section>
-  <h2>{{ s.name }}</h2>
-  <div hx-get="/shelf/{{ i }}" hx-trigger="load delay:{{ i * 400 }}ms" hx-swap="innerHTML"><p class="dim">Loading…</p></div>
+  <h2>{{ s.name }} <a class="dim" href="/shelves/{{ i }}">See all</a></h2>
+  <div hx-get="/shelf/{{ i }}" hx-trigger="load{% if not s.curated %} delay:{{ [i * 400, 2000] | min }}ms{% endif %}" hx-swap="innerHTML"><p class="dim">Loading…</p></div>
 </section>
 {% endfor %}
 {% endblock %}
