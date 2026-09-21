@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+import re
 import string
 import time
 
@@ -151,3 +152,48 @@ def test_random_garbage_never_raises():
     for _ in range(300):
         raw = "".join(rng.choice(alphabet) for _ in range(rng.randint(0, 60)))
         assert isinstance(parse_query(raw), ParsedQuery)
+
+
+_BAD_CHARS = re.compile("[\x00-\x1f\x7f-\x9f‪-‮⁦-⁩‎‏]")
+
+
+@pytest.mark.parametrize("raw", ["lang:\x1b[2J‮", "stars:\x1b[2J\x07", "topic:x‮y",
+                                 "lang:a\x00b\x85c", "stars:1\x9b2"])
+def test_problem_messages_are_sanitised(raw):
+    p = parse_query(raw)
+    assert p.problems
+    for msg in p.problems:
+        assert not _BAD_CHARS.search(msg), repr(msg)
+
+
+def test_problem_echo_is_truncated_after_cleaning():
+    p = parse_query("lang:" + "\x1b" * 100 + "$" * 100)
+    assert len(p.problems[0]) < 100
+
+
+def test_brackets_echoed_literally():
+    p = parse_query("lang:[/]")
+    assert "[/]" in p.problems[0]  # callers must render messages as plain text, not markup
+
+
+def test_problem_count_capped():
+    raw = " ".join(["stars:x"] * 1000)
+    start = time.monotonic()
+    p = parse_query(raw)
+    assert time.monotonic() - start < 1.0
+    assert len(p.problems) == 11
+    assert p.problems[-1] == "... and more problems ignored"
+    assert p.text == ""
+
+
+def test_exactly_ten_problems_not_marked_truncated():
+    p = parse_query(" ".join(["stars:x"] * 10))
+    assert len(p.problems) == 10
+    assert "more problems" not in p.problems[-1]
+
+
+def test_zero_padded_numbers():
+    assert parse_query("stars:0000000000005").filters.min_stars == 5
+    assert parse_query("stars:" + "0" * 50).filters.min_stars == 0
+    p = parse_query("stars:1234567890123")
+    assert len(p.problems) == 1 and p.filters == SearchFilters()
