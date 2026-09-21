@@ -30,5 +30,6 @@
       {% else %}<p class="dim">No releases published.</p>{% endif %}
     </aside>
   </div>
+<div hx-get="/similar/{{ r.host }}/{{ r.slug }}" hx-trigger="load delay:300ms" hx-swap="outerHTML"></div>
 </article>
 {% endblock %}

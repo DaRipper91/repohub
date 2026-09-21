@@ -149,3 +149,19 @@ class GitHubProvider:
         resp = await call(self._client, self.host, "POST", f"/repos/{slug}/forks", ok=(202,))
         j = resp.json()
         return fork_result("https://github.com", j["full_name"], j.get("html_url"))
+
+    @guard_parse
+    async def starred_repos(self, limit: int = 200) -> list[Repo]:
+        """Repositories the signed-in account starred (at most ``limit``, 100 per request)."""
+        if "Authorization" not in self._client.headers:
+            return []
+        out: list[Repo] = []
+        for page in range(1, -(-limit // 100) + 1):
+            resp = await self._get("/user/starred", {"per_page": 100, "page": page})
+            items = resp.json() if resp is not None else []
+            if not isinstance(items, list):
+                raise TypeError("items")
+            out += [_to_repo(i) for i in items[:100]]
+            if len(items) < 100:
+                break
+        return out[:limit]

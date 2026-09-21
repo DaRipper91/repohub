@@ -12,6 +12,8 @@ from repohub.core.accounts import (ANONYMOUS, ERROR, LIMITED, REJECTED, SIGNED_I
 from repohub.core.actionlog import ActionEntry, ActionLog
 from repohub.core.browse import Shelf, ShelfEntry
 from repohub.core.cache import Cache
+from repohub.core.history import History
+from repohub.core import recommend as rec
 from repohub.core.hosts import registry
 from repohub.core.models import Release, Repo, SearchFilters
 from repohub.core.providers.base import ActionDenied, ForkResult, NotFound, ProviderError, RateLimited
@@ -24,6 +26,7 @@ DEGRADED_TTL = 60
 PARTIAL_TTL = 60
 ACCOUNT_TTL = 300
 STARRED_TTL = 60
+RECOMMEND_TTL = 3600
 MIN_LIMIT_WAIT = 60
 MAX_LIMIT_WAIT = 3600
 REFRESH_CONCURRENCY = 8
@@ -45,6 +48,13 @@ class Detail:
     @classmethod
     def from_dict(cls, d: dict) -> "Detail":
         return cls(Repo.from_dict(d["repo"]), d["readme"], Release.from_dict(d["release"]) if d["release"] else None)
+
+
+@dataclass
+class RecResult:
+    items: list
+    errors: dict[str, str]
+    signal: bool = True
 
 
 @dataclass
@@ -87,11 +97,14 @@ def _domain(host: str) -> str:
 class Hub:
     def __init__(self, providers: dict, cache: Cache, favorites: Favorites, *,
                  clock: Callable[[], float] = time.time, host_problems: list[str] | None = None,
-                 token_sources: dict[str, str] | None = None, actions: ActionLog | None = None):
+                 token_sources: dict[str, str] | None = None, actions: ActionLog | None = None, history: History | None = None):
         self.providers, self.cache, self.favorites = providers, cache, favorites
         self.host_problems: list[str] = list(host_problems) if host_problems else []
         self.token_sources: dict[str, str] = dict(token_sources or {})  # host -> "env NAME" / "gh CLI"
         self.actions = actions if actions is not None else ActionLog()
+        self.history = history if history is not None else History()
+        self._starred_repos: dict[str, tuple[float, list[Repo]]] = {}  # per host, in memory only
+        self._rec_memo: dict[str, tuple[float, object]] = {}  # in memory only
         self._clock = clock
         self._starred: dict[str, tuple[float, bool]] = {}  # in memory only
         self._accounts: dict[str, tuple[float, AccountInfo]] = {}  # in memory only, never on disk
@@ -378,3 +391,103 @@ class Hub:
 
     def recent_actions(self, limit: int = 20) -> list[ActionEntry]:
         return self.actions.recent(limit)
+
+    # ------------------------------------------------------------ recommendations (all computed locally)
+
+    def record_view(self, repo: Repo) -> None:
+        """Remember an opened repository, only while the opt-in history is on."""
+        try:
+            self.history.record(repo)
+        except Exception:
+            pass
+
+    async def _starred_signals(self) -> tuple[list[Repo], dict[str, str]]:
+        """Starred repos from every signed-in host: at most 200 each, in memory for an hour."""
+        errors: dict[str, str] = {}
+
+        async def one(host: str) -> list[Repo]:
+            hit = self._starred_repos.get(host)
+            if hit is not None and self._clock() < hit[0]:
+                return hit[1]
+            provider = self.providers.get(host)
+            if provider is None or not hasattr(provider, "starred_repos"):
+                return []
+            limited = self._limit_message(host)
+            if limited is not None:
+                errors[host] = limited
+                return []
+            try:
+                if (await self.account(host)).status != SIGNED_IN:
+                    return []
+                repos = list(await with_deadline(host, provider.starred_repos(200)))
+            except RateLimited as e:
+                self._note_rate_limit(host, e)
+                errors[host] = str(e)
+                return []
+            except ProviderError as e:
+                errors[host] = str(e)
+                return []
+            except Exception:
+                errors[host] = "unexpected error"
+                return []
+            self._starred_repos[host] = (self._clock() + RECOMMEND_TTL, repos)
+            return repos
+
+        lists = await asyncio.gather(*(one(h) for h in registry().ids))
+        return [r for lst in lists for r in lst], errors
+
+    def _open_hosts(self) -> tuple[str, ...]:
+        """Configured hosts that are not paused by a rate limit."""
+        return tuple(h for h in registry().ids if h in self.providers and self._limit_message(h) is None)
+
+    async def _candidates(self, queries) -> tuple[list[Repo], dict[str, str]]:
+        hosts = self._open_hosts()
+        if not hosts or not queries:
+            return [], {}
+        results = await asyncio.gather(*(
+            self.search("", SearchFilters(topic=q.topic, language=q.language, hosts=hosts, hide_forks=True))
+            for q in queries), return_exceptions=True)
+        repos: list[Repo] = []
+        errors: dict[str, str] = {}
+        for out in results:
+            if isinstance(out, Exception):
+                continue
+            repos += out.repos
+            errors.update(out.errors)
+        return repos, errors
+
+    def _memo(self, key: str):
+        hit = self._rec_memo.get(key)
+        return hit[1] if hit is not None and self._clock() < hit[0] else None
+
+    async def recommend(self, limit: int = rec.MAX_RESULTS) -> RecResult:
+        """"Recommended for you": from favorites, starred repos and (if on) history. Explains each pick."""
+        favorites, history = self.favorites.list(), self.history.list()
+        starred, errors = await self._starred_signals()
+        profile = rec.build_profile(favorites, starred, history)
+        if profile.empty:
+            return RecResult([], errors, signal=False)
+        exclude = {r.key for r in (*favorites, *starred, *history)}
+        key = "rec:" + hashlib.sha256(json.dumps([sorted(exclude), sorted(profile.topics.items()),
+                                                  self._open_hosts()]).encode()).hexdigest()
+        memo = self._memo(key)
+        if memo is not None:
+            return RecResult(memo[:limit], errors)
+        candidates, cand_errors = await self._candidates(rec.plan_queries(profile))
+        items = rec.rank(candidates, profile, exclude, rec.MAX_RESULTS)
+        if not cand_errors:
+            self._rec_memo[key] = (self._clock() + RECOMMEND_TTL, items)
+        return RecResult(items[:limit], {**errors, **cand_errors})
+
+    async def similar(self, host: str, slug: str, limit: int = 8) -> RecResult:
+        """"More like this": shares the most topics with one repository; excludes itself and forks."""
+        repo = await self.repo_summary(host, slug)
+        key = f"sim:{repo.key}@{_domain(host)}:{'|'.join(repo.topics)}"
+        memo = self._memo(key)
+        if memo is not None:
+            return RecResult(memo[:limit], {})
+        candidates, errors = await self._candidates(rec.similar_plan(repo))
+        items = rec.rank_similar(repo, candidates, 8)
+        if not errors:
+            self._rec_memo[key] = (self._clock() + RECOMMEND_TTL, items)
+        return RecResult(items[:limit], errors)

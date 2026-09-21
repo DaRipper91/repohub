@@ -262,3 +262,18 @@ class ForgejoProvider:
         resp = await call(self._client, self.host, "POST", f"/repos/{slug}/forks", ok=(202,))
         j = resp.json()
         return fork_result(f"https://{self._domain}", j["full_name"], j.get("html_url"))
+
+    @guard_parse
+    async def starred_repos(self, limit: int = 200) -> list[Repo]:
+        if "Authorization" not in self._client.headers:
+            return []
+        out: list[Repo] = []
+        for page in range(1, -(-limit // MAX_LIMIT) + 1):
+            resp = await self._get("/user/starred", {"limit": MAX_LIMIT, "page": page})
+            items = resp.json() if resp is not None else []
+            if not isinstance(items, list):
+                raise TypeError("items")
+            out += [self._to_repo(i) for i in items[:MAX_LIMIT] if self._slug_ok(i)]
+            if len(items) < MAX_LIMIT:
+                break
+        return out[:limit]

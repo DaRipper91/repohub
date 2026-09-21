@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block body %}
 {% for problem in problems or [] %}<p class="banner warn">{{ problem }}</p>{% endfor %}
+<div hx-get="/recommended" hx-trigger="load delay:300ms" hx-swap="outerHTML"></div>
 {% for i, s in shelves %}
 <section>
   <h2>{{ s.name }} <a class="dim" href="/shelves/{{ i }}">See all</a></h2>

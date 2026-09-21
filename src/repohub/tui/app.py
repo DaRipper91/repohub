@@ -78,6 +78,7 @@ class DetailScreen(Screen):
         meta = self.query_one("#meta", Static)
         try:
             self.detail = await self.hub.detail(self.host, self.slug)
+            self.hub.record_view(self.detail.repo)  # only stored while the opt-in history is on
             self._render_meta()
             await self.query_one("#readme", Markdown).update(self.detail.readme or "_No README._")
         except Exception as e:  # never let a worker crash take the app down
@@ -207,7 +208,8 @@ class RepoHubApp(App):
     TITLE = "RepoHub"
     BINDINGS = [Binding("ctrl+f", "favorites", "Favorites"), Binding("escape", "home", "Shelves"),
                 Binding("]", "next_page", "Next page"), Binding("[", "prev_page", "Prev page"),
-                Binding("d", "remove_favorite", "Remove favorite"), Binding("f2", "accounts", "Accounts"), Binding("a", "accounts", "Accounts", show=False)]
+                Binding("d", "remove_favorite", "Remove favorite"), Binding("f2", "accounts", "Accounts"), Binding("f3", "history", "History on/off"),
+                Binding("f4", "clear_history", "Clear history"), Binding("a", "accounts", "Accounts", show=False)]
 
     def __init__(self, hub, clone_root, shelves=None, cloner=do_clone):
         super().__init__()
@@ -248,6 +250,7 @@ class RepoHubApp(App):
         for i, s in enumerate(self.shelves):
             second = f"curated · {len(s.repos)}" if s.curated else (s.topic or s.query)
             t.add_row(Text(s.name), Text(second), key=f"shelf:{i}")
+        t.add_row(Text("Recommended for you"), Text("from your favorites, stars and history"), key="recommended")
         status = "Shelves. Press Enter on one, or type a search above."
         if self.shelf_problems:
             status += f"  {len(self.shelf_problems)} shelf file problem(s): {self.shelf_problems[0]}"
@@ -293,6 +296,39 @@ class RepoHubApp(App):
             return
         if self.view == "favorites":
             self._show_repos(self.hub.favorites.list(), "Favorites", view="favorites")
+
+    async def _show_recommended(self) -> None:
+        try:
+            result = await self.hub.recommend()
+        except Exception as e:
+            self._status(f"Could not build recommendations: {e}")
+            self.notify(f"Could not build recommendations: {e}", severity="error", markup=False)
+            return
+        self.view = "recommended"
+        self.refresh_bindings()
+        t = self._table()
+        t.clear(columns=True)
+        t.add_columns("Repo", "Host", "Stars", "Lang", "Why")
+        for item in result.items:
+            r = item.repo
+            t.add_row(Text(r.slug), Text(r.host), Text(str(r.stars)), Text(r.language or "n/a"), Text(item.why[:80]),
+                      key=f"repo:{r.host}:{r.slug}")
+        notes = ["Recommended for you"]
+        if not result.signal:
+            notes.append("Nothing yet: favorite or star some repositories (F3 turns on history).")
+        elif not result.items:
+            notes.append("No suggestions found.")
+        notes += [f"{h}: {m}" for h, m in result.errors.items()]
+        self._status("  ".join(notes))
+
+    def action_history(self) -> None:
+        on = not self.hub.history.enabled
+        self.hub.history.set_enabled(on)
+        self.notify("Local history is on" if on else "Local history is off", markup=False)
+
+    def action_clear_history(self) -> None:
+        self.hub.history.clear()
+        self.notify("History cleared", markup=False)
 
     def action_accounts(self) -> None:
         self._status("Checking accounts…")
@@ -429,7 +465,10 @@ class RepoHubApp(App):
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         key = event.row_key.value or ""
-        if key.startswith("shelf:"):
+        if key == "recommended":
+            self._status("Working out recommendations…")
+            self.run_worker(self._show_recommended(), exclusive=True)
+        elif key.startswith("shelf:"):
             self._status("Loading shelf…")
             self.run_worker(self._open_shelf(int(key.split(":")[1])), exclusive=True)
         elif key.startswith("repo:"):

@@ -9,7 +9,7 @@ from pathlib import Path
 import nh3
 from fastapi import FastAPI, Form, HTTPException, Query, Request
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from markdown_it import MarkdownIt
@@ -173,14 +173,47 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
             return page(request, "_message.html", status=404, message=f"Could not load {slug}: {e}")
         except ProviderError as e:
             return page(request, "_message.html", status=502, message=f"Could not load {slug}: {e}")
+        hub.record_view(d.repo)  # only stored while the opt-in history is on
         acct = await hub.account(host)
         starred = await hub.starred(host, slug) if acct.status == "signed in" else None
         return page(request, "repo.html", d=d, readme_html=render_markdown(d.readme) if d.readme else "",
                     is_fav=hub.favorites.is_favorite(d.repo.key), signed_in=acct.status == "signed in", starred=starred)
 
+    @app.get("/recommended", response_class=HTMLResponse)
+    async def recommended(request: Request):
+        result = await hub.recommend(6)
+        if not result.items:  # no signal (or nothing found): the home page shows nothing
+            return HTMLResponse("")
+        return page(request, "_recs.html", result=result, title="Recommended for you")
+
+    @app.get("/similar/{host}/{slug:path}", response_class=HTMLResponse)
+    async def similar(request: Request, host: str, slug: str):
+        require_repo(host, slug)
+        try:
+            result = await hub.similar(host, slug, 6)
+        except ProviderError:
+            return HTMLResponse("")
+        if not result.items:
+            return HTMLResponse("")
+        return page(request, "_recs.html", result=result, title="Similar repositories")
+
+    @app.post("/history")
+    async def history_control(action: str = Form(...), token_field: str = Form("", alias="token")):
+        require_token(token_field)
+        if action == "on":
+            hub.history.set_enabled(True)
+        elif action == "off":
+            hub.history.set_enabled(False)
+        elif action == "clear":
+            hub.history.clear()
+        else:
+            raise HTTPException(404, "not found")
+        return RedirectResponse("/accounts", status_code=303)
+
     @app.get("/accounts", response_class=HTMLResponse)
     async def accounts_page(request: Request):
-        return page(request, "accounts.html", accounts=await hub.accounts(), recent=hub.recent_actions(20))
+        return page(request, "accounts.html", accounts=await hub.accounts(), recent=hub.recent_actions(20),
+                    history_on=hub.history.enabled, history_count=len(hub.history.list()))
 
     @app.get("/favorites", response_class=HTMLResponse)
     async def favorites_page(request: Request):

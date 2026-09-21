@@ -1,0 +1,14 @@
+<section>
+  <h2>{{ title }}</h2>
+  {% for host, msg in result.errors.items() %}<p class="banner warn">{{ host }}: {{ msg }}</p>{% endfor %}
+  <div class="grid">
+  {% for i in result.items %}{% set r = i.repo %}
+    <a class="card" href="/repo/{{ r.host }}/{{ r.slug }}">
+      <div class="name">{{ r.slug }} <span class="badge host-{{ r.host }}">{{ r.host }}</span></div>
+      <p>{{ r.description }}</p>
+      <div class="meta">★ {{ r.stars }} · {{ r.language or "n/a" }}</div>
+      <p class="dim">{{ i.why }}</p>
+    </a>
+  {% endfor %}
+  </div>
+</section>

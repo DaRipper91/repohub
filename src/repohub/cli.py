@@ -96,6 +96,18 @@ def _build_parser() -> argparse.ArgumentParser:
                                     "Token values are never shown.")
     ho.add_argument("--json", action="store_true")
 
+    rc = sub.add_parser("recommend", help="repositories you may like (read-only)",
+                        description="Suggestions from your favorites, your starred repositories and, if you turned it on, "
+                                    "your local history. Computed on this machine; each result says why.")
+    rc.add_argument("--limit", type=_bounded(1, 12), default=12, metavar="N")
+    rc.add_argument("--json", action="store_true")
+
+    sm = sub.add_parser("similar", help="repositories like one repository (read-only)",
+                        description="Repositories that share topics with HOST:OWNER/NAME.")
+    sm.add_argument("repo", metavar="HOST:OWNER/NAME")
+    sm.add_argument("--limit", type=_bounded(1, 8), default=8, metavar="N")
+    sm.add_argument("--json", action="store_true")
+
     ac = sub.add_parser("accounts", help="show who you are signed in as on each host (read-only)",
                         description="For each host: the account, where its token came from (never the token), "
                                     "its scopes and rate limit where the host reports them. "
@@ -352,6 +364,43 @@ def _cmd_hosts(args, hub, o: _Out, problems: list[str] | None = None, gh_cli: Ca
     return EXIT_OK
 
 
+def _emit_recs(o: _Out, as_json: bool, result, extra: dict | None = None) -> int:
+    o.errors(dict(result.errors))
+    items = result.items
+    if as_json:
+        o.json({"schema_version": SCHEMA_VERSION, **(extra or {}), "recommendations": [i.to_dict() for i in items],
+                "errors": dict(result.errors)})
+    elif items:
+        o.out(_table(["repo", "host", "stars", "language", "why"],
+                     [[_fit(i.repo.slug, 50), _fit(i.repo.host, 20), str(i.repo.stars), _fit(i.repo.language, 20),
+                       _short(i.why, 70)] for i in items], right=(2,)))
+    else:
+        o.err("no recommendations yet: favorite or star some repositories first" if not result.signal
+              else "no recommendations found")
+    return _status(len(items), dict(result.errors))
+
+
+def _cmd_recommend(args, hub, o: _Out) -> int:
+    return _emit_recs(o, args.json, asyncio.run(hub.recommend(args.limit)))
+
+
+def _cmd_similar(args, hub, o: _Out) -> int:
+    parsed = _valid_repo_arg(args.repo)
+    if parsed is None:
+        o.err("error: repository must look like HOST:OWNER/NAME with a configured host (see 'repohub hosts')")
+        return EXIT_USAGE
+    host, slug = parsed
+    try:
+        result = asyncio.run(hub.similar(host, slug, args.limit))
+    except NotFound:
+        o.err(f"error: {host}:{_cell(slug)} not found")
+        return EXIT_ERROR
+    except ProviderError as e:
+        o.err(f"error: {_cell(host)}: {_msg(e)}")
+        return EXIT_ERROR
+    return _emit_recs(o, args.json, result, extra={"repo": f"{host}:{slug}"})
+
+
 def _rate_text(rate) -> str:
     return f"{rate.remaining}/{rate.limit}" if rate else "unknown"
 
@@ -373,7 +422,8 @@ def _cmd_accounts(args, hub, o: _Out) -> int:
 
 
 _COMMANDS = {"search": _cmd_search, "repo": _cmd_repo, "shelves": _cmd_shelves,
-             "shelf": _cmd_shelf, "favorites": _cmd_favorites, "accounts": _cmd_accounts}
+             "shelf": _cmd_shelf, "favorites": _cmd_favorites, "accounts": _cmd_accounts,
+             "recommend": _cmd_recommend, "similar": _cmd_similar}
 
 
 def main(argv: list[str] | None = None, *, hub_factory: Callable | None = None,
@@ -400,7 +450,9 @@ def main(argv: list[str] | None = None, *, hub_factory: Callable | None = None,
         if args.command == "hosts":
             return _cmd_hosts(args, None, o, host_problems, gh_cli)
         if args.command == "repo" and _valid_repo_arg(args.repo) is None:
-            return _cmd_repo(args, None, o)  # rejected before any hub is built
+            return _cmd_repo(args, None, o)
+        if args.command == "similar" and _valid_repo_arg(args.repo) is None:
+            return _cmd_similar(args, None, o)  # rejected before any hub is built
         if hub_factory is None:
             from repohub.config import build_hub as hub_factory
         hub = hub_factory() if args.command != "shelves" else None

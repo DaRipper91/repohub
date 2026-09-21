@@ -171,3 +171,24 @@ class GitLabProvider:
         resp = await self._call("POST", f"/projects/{self._check_slug(slug)}/fork", (200, 201, 202))
         j = resp.json()
         return fork_result("https://gitlab.com", j["path_with_namespace"], j.get("web_url"))
+
+    @guard_parse
+    async def starred_repos(self, limit: int = 200) -> list[Repo]:
+        if "PRIVATE-TOKEN" not in self._client.headers:
+            return []
+        me = await self._get("/user")
+        if me is None:
+            return []
+        uid = me.json()["id"]
+        if not isinstance(uid, int) or isinstance(uid, bool):
+            raise TypeError("id")
+        out: list[Repo] = []
+        for page in range(1, -(-limit // 100) + 1):
+            resp = await self._get(f"/users/{uid}/starred_projects", {"per_page": 100, "page": page})
+            items = resp.json() if resp is not None else []
+            if not isinstance(items, list):
+                raise TypeError("items")
+            out += [_to_repo(i) for i in items[:100]]
+            if len(items) < 100:
+                break
+        return out[:limit]

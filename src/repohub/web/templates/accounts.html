@@ -18,6 +18,14 @@
   </div>
 {% endfor %}
 </div>
+<h3>Recommendations and history</h3>
+<p class="dim">Recommendations are worked out on this machine from your favorites, your starred repositories and, only if you turn it on, the repositories you open. Off by default. History keeps at most 500 repositories for 90 days and never leaves this machine.</p>
+<p>Local history is <strong>{{ "on" if history_on else "off" }}</strong>{% if history_on %} ({{ history_count }} kept){% endif %}.</p>
+<form method="post" action="/history" class="inline">
+  <input type="hidden" name="token" value="{{ token }}">
+  <button name="action" value="{{ 'off' if history_on else 'on' }}">{{ "Turn history off" if history_on else "Turn history on" }}</button>
+  <button name="action" value="clear">Clear history</button>
+</form>
 <h3>Recent actions</h3>
 {% if recent %}<table><tr><th>Host</th><th>Repository</th><th>Action</th><th>Result</th></tr>
 {% for e in recent %}<tr><td>{{ e.host }}</td><td>{{ e.slug }}</td><td>{{ e.action }}</td><td>{{ "ok" if e.ok else "failed" }}: {{ e.result }}</td></tr>{% endfor %}</table>

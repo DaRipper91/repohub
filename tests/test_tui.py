@@ -23,7 +23,7 @@ async def test_starts_with_shelf_list(tmp_path):
     app, _ = make_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        assert app.query_one(DataTable).row_count == 1
+        assert app.query_one(DataTable).row_count == 2
 
 
 async def test_search_fills_results(tmp_path):
@@ -115,7 +115,7 @@ async def test_markup_in_results_does_not_crash_or_run_actions(tmp_path):
     app, _ = make_evil_app(tmp_path)
     async with app.run_test() as pilot:
         await pilot.pause()
-        assert app.query_one(DataTable).row_count == 1  # shelf row with markup renders
+        assert app.query_one(DataTable).row_count == 2  # shelf row with markup renders
         app.query_one(Input).focus()
         await pilot.press("x", "enter")
         await settle(app, pilot)
@@ -295,7 +295,7 @@ async def test_home_cancels_inflight_search(tmp_path):
         await pilot.pause()  # (wait_for_complete would raise WorkerCancelled for the cancelled worker)
         await pilot.pause()
         table = app.query_one(DataTable)
-        assert table.row_count == 1 and [c.label.plain for c in table.columns.values()] == ["Shelf", "Topic"]
+        assert table.row_count == 2 and [c.label.plain for c in table.columns.values()] == ["Shelf", "Topic"]
 
 
 async def test_favorites_view_shows_stored_rows_before_refresh_finishes(tmp_path):
@@ -548,7 +548,7 @@ async def test_paging_keys_do_nothing_outside_curated_shelf(tmp_path):
         await pilot.pause()
         await pilot.press("]", "[")
         await settle(app, pilot)
-        assert app.view == "shelves" and app.query_one(DataTable).row_count == 1
+        assert app.view == "shelves" and app.query_one(DataTable).row_count == 2
         await open_shelf_row(app, pilot)  # search shelf
         n = app.query_one(DataTable).row_count
         await pilot.press("]", "[")
@@ -649,7 +649,7 @@ async def test_escape_returns_to_shelf_list_and_late_result_is_dropped(tmp_path)
         await open_shelf_row(app2, pilot)
         await pilot.press("escape")
         await pilot.pause()
-        assert app2.view == "shelves" and app2.query_one(DataTable).row_count == 1
+        assert app2.view == "shelves" and app2.query_one(DataTable).row_count == 2
 
 
 async def test_selecting_curated_row_opens_detail(tmp_path):
@@ -677,7 +677,7 @@ async def test_load_all_shelves_used_by_default_and_problems_shown(tmp_path, mon
         assert app.shelves == [shelf] and app.shelf_problems == ["bad [/] file", "second"]
         status = text_of(app.query_one("#status", Static))
         assert "2 shelf file problem(s): bad [/] file" in status
-        assert app.query_one(DataTable).row_count == 1
+        assert app.query_one(DataTable).row_count == 2
 
 
 # ---- Phase 2: codeberg and extra hosts -----------------------------------------------------------

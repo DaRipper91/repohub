@@ -34,7 +34,7 @@ async def test_shelf_indexes_agree_in_web_tui_and_cli(tmp_path, monkeypatch):
     tui = RepoHubApp(make_hub(FakeProvider("github")), tmp_path, shelves=shelves)
     async with tui.run_test() as pilot:
         await pilot.pause()
-        assert [k.value for k in tui.query_one(DataTable).rows] == [f"shelf:{i}" for i in range(5)]
+        assert [k.value for k in tui.query_one(DataTable).rows] == [*(f"shelf:{i}" for i in range(5)), "recommended"]
     # cli
     monkeypatch.setattr(cli, "load_all_shelves", lambda *a, **k: LoadedShelves(list(shelves), []))
     out = io.StringIO()
