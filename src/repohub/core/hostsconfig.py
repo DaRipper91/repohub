@@ -24,7 +24,10 @@ MAX_HOST_ENTRIES = 20
 MAX_NAME = 40
 MAX_PATH_SHOWN = 200
 _HOST_KEYS = ("id", "kind", "url", "token_env", "name")
-_TOKEN_RE = re.compile(r"^[A-Z][A-Z0-9_]{0,62}_TOKEN$")
+# Extra hosts may only use REPOHUB_-prefixed variables, so a tampered hosts.yaml cannot bind an
+# unrelated secret (AWS_SESSION_TOKEN, NPM_TOKEN, ...) to a host of its choosing.
+TOKEN_PREFIX = "REPOHUB_"
+_TOKEN_RE = re.compile(r"^REPOHUB_[A-Z][A-Z0-9_]{0,50}_TOKEN$")  # use fullmatch
 _LABEL_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
 
 
@@ -39,17 +42,45 @@ def personal_hosts_path() -> Path:
 
 
 def _show(value: object) -> str:
-    """Bounded, sanitised repr of untrusted text for error messages."""
-    return repr(clean_text(str(value))[:60])
+    """Bounded, sanitised repr of untrusted text for error messages.
+
+    Containers are described by type only: YAML aliases share objects, so ``str()`` of a
+    small file can expand exponentially (an alias bomb).
+    """
+    if isinstance(value, str):
+        return repr(clean_text(value)[:60])
+    if value is None or isinstance(value, (bool, int, float)):
+        return repr(value)[:60]
+    return f"<{type(value).__name__}>"
 
 
 def _problem_text(path: Path, err: object) -> str:
     return f"hosts file ({clean_text(str(path))[:MAX_PATH_SHOWN]}): {clean_text(str(err))[:300]}"
 
 
+class _UniqueKeyLoader(yaml.SafeLoader):
+    """SafeLoader that rejects duplicate mapping keys instead of silently keeping the last."""
+
+    def construct_mapping(self, node, deep=False):
+        if isinstance(node, yaml.MappingNode):
+            self.flatten_mapping(node)
+            seen = set()
+            for key_node, _ in node.value:
+                key = self.construct_object(key_node, deep=True)
+                try:
+                    if key in seen:
+                        raise yaml.constructor.ConstructorError(
+                            "while constructing a mapping", node.start_mark,
+                            "found duplicate key", key_node.start_mark)
+                    seen.add(key)
+                except TypeError:
+                    pass  # unhashable; the base class reports it
+        return super().construct_mapping(node, deep=deep)
+
+
 def _safe_load(text: str) -> object:
     try:
-        return yaml.safe_load(text)
+        return yaml.load(text, Loader=_UniqueKeyLoader)  # noqa: S506 (SafeLoader subclass)
     except yaml.YAMLError as e:
         raise ValueError(f"invalid YAML: {clean_text(str(e))[:200]}") from e
     except RecursionError as e:
@@ -147,14 +178,15 @@ def _parse_host(raw: object, taken_ids: set[str], taken_domains: set[str],
         name = clean_text(name_raw)[:MAX_NAME] or host_id
     token = raw.get("token_env")
     if token is None:
-        token = host_id.upper().replace("-", "_") + "_TOKEN"
+        token = TOKEN_PREFIX + host_id.upper().replace("-", "_") + "_TOKEN"
         if token in taken_tokens:
             raise ValueError(f"default token variable {token} is already used by another "
                              "host; set 'token_env'")
     else:
         if not isinstance(token, str) or not _TOKEN_RE.fullmatch(token):
-            raise ValueError(f"invalid token_env {_show(token)} (capital letters, digits and "
-                             "'_', must end in _TOKEN)")
+            raise ValueError(f"invalid token_env {_show(token)}: the name must start with "
+                             "REPOHUB_ and end in _TOKEN (capital letters, digits and '_'), "
+                             "e.g. REPOHUB_MYFORGE_TOKEN")
         if token in taken_tokens:
             raise ValueError(f"token variable {token} is already used by another host")
     return HostSpec(host_id, "forgejo", name, domain, f"https://{domain}/api/v1", (token,), False)
@@ -187,9 +219,14 @@ def _parse_hosts(data: object) -> tuple[list[HostSpec], list[str]]:
 
 def load_hosts(path: Path | str | None = None) -> LoadedHosts:
     """Built-ins plus valid extras. Never raises; does not change the active registry."""
-    path = Path(path) if path else personal_hosts_path()
+    path = personal_hosts_path() if path is None else Path(path)  # "" is not "default"
     try:
-        if not path.exists():
+        if path.is_symlink():
+            try:
+                os.stat(path)  # follows the link
+            except OSError as e:  # dangling target or a loop
+                raise ValueError("broken symlink") from e
+        elif not path.exists():
             return LoadedHosts(HostRegistry(BUILTIN_HOSTS))
         specs, problems = _parse_hosts(_safe_load(_read_file(path, MAX_HOSTS_BYTES)))
         return LoadedHosts(HostRegistry(BUILTIN_HOSTS + tuple(specs)), problems)

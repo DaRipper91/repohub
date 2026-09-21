@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 
 KINDS = ("github", "gitlab", "forgejo")
 ID_RE = re.compile(r"^[a-z][a-z0-9-]{0,19}$")
+DOMAIN_RE = re.compile(r"^[a-z0-9]([a-z0-9.-]{0,251}[a-z0-9])?$")  # lowercase; use fullmatch
 
 
 @dataclass(frozen=True)
@@ -38,8 +39,10 @@ class HostRegistry:
         for spec in specs:
             if spec.kind not in KINDS:
                 raise ValueError(f"unknown host kind {spec.kind!r}")
-            if not ID_RE.match(spec.id):
+            if not ID_RE.fullmatch(spec.id):  # fullmatch: '$' would accept a trailing newline
                 raise ValueError(f"invalid host id {spec.id!r}")
+            if not DOMAIN_RE.fullmatch(spec.domain):
+                raise ValueError(f"invalid host domain {spec.domain!r}")
             if spec.id in self._specs:
                 raise ValueError(f"duplicate host id {spec.id!r}")
             if spec.domain in self._domains:

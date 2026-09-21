@@ -93,8 +93,16 @@ def personal_shelves_path() -> Path:
 
 
 def _show(value: object) -> str:
-    """Bounded, sanitised repr of untrusted text for error messages."""
-    return repr(clean_text(str(value))[:60])
+    """Bounded, sanitised repr of untrusted text for error messages.
+
+    Containers are described by type only: YAML aliases share objects, so ``str()`` of a
+    small file can expand exponentially (an alias bomb).
+    """
+    if isinstance(value, str):
+        return repr(clean_text(value)[:60])
+    if value is None or isinstance(value, (bool, int, float)):
+        return repr(value)[:60]
+    return f"<{type(value).__name__}>"
 
 
 def _is_int(v: object) -> bool:

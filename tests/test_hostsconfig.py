@@ -75,25 +75,25 @@ def test_empty_and_null_files_mean_none(tmp_path):
 
 def test_valid_file_appends_hosts_in_order(tmp_path):
     text = (entry(id="myforge", url="https://Git.Example.ORG/", name="My Forge")
-            + entry(id="other-one", url="https://code.example.net", token_env="OTHER_FORGE_TOKEN"))
+            + entry(id="other-one", url="https://code.example.net", token_env="REPOHUB_OTHER_FORGE_TOKEN"))
     loaded = load(tmp_path, text)
     assert loaded.problems == []
     assert loaded.registry.ids == BUILTIN_IDS + ("myforge", "other-one")
     a = loaded.registry.get("myforge")
     assert (a.kind, a.name, a.domain, a.api_base) == (
         "forgejo", "My Forge", "git.example.org", "https://git.example.org/api/v1")
-    assert a.token_env == ("MYFORGE_TOKEN",)
+    assert a.token_env == ("REPOHUB_MYFORGE_TOKEN",)
     assert a.builtin is False
     b = loaded.registry.get("other-one")
     assert b.name == "other-one"  # default name is the id
-    assert b.token_env == ("OTHER_FORGE_TOKEN",)
+    assert b.token_env == ("REPOHUB_OTHER_FORGE_TOKEN",)
     assert b.domain == "code.example.net"
     assert loaded.registry.get("github").builtin is True
 
 
 def test_default_token_replaces_hyphen(tmp_path):
     loaded = load(tmp_path, entry(id="my-forge"))
-    assert loaded.registry.get("my-forge").token_env == ("MY_FORGE_TOKEN",)
+    assert loaded.registry.get("my-forge").token_env == ("REPOHUB_MY_FORGE_TOKEN",)
 
 
 def test_name_is_cleaned_and_capped(tmp_path):
@@ -140,7 +140,7 @@ def test_non_string_id_and_missing_id(tmp_path):
 
 def test_duplicate_id(tmp_path):
     loaded = load(tmp_path, entry(id="dup", url="https://a.example.org")
-                  + entry(id="dup", url="https://b.example.org", token_env="DUP2_TOKEN"))
+                  + entry(id="dup", url="https://b.example.org", token_env="REPOHUB_DUP2_TOKEN"))
     assert loaded.registry.ids == BUILTIN_IDS + ("dup",)
     assert len(loaded.problems) == 1
     assert loaded.problems[0].startswith("hosts file entry #1: ") and "already used" in loaded.problems[0]
@@ -251,47 +251,66 @@ def test_domain_equal_to_builtin_or_repeated(tmp_path):
             + entry(id="bb", url="https://CODEBERG.org/")
             + entry(id="cc", url="https://gitlab.com")
             + entry(id="dd", url="https://ok.example.org")
-            + entry(id="ee", url="https://OK.example.org/", token_env="EE_OTHER_TOKEN"))
+            + entry(id="ee", url="https://OK.example.org/", token_env="REPOHUB_EE_OTHER_TOKEN"))
     loaded = load(tmp_path, text)
     assert loaded.registry.ids == BUILTIN_IDS + ("dd",)
     assert [p.split(":")[0] for p in loaded.problems] == [f"hosts file entry #{n}" for n in (0, 1, 2, 4)]
     assert all("already configured" in p for p in loaded.problems)
 
 
-@pytest.mark.parametrize("token", ["MYTOKEN", "MY_TOKEN_", "my_token", "_X_TOKEN", "1X_TOKEN", "TOKEN",
-                                   "A" * 70 + "_TOKEN", "MY-X_TOKEN", "MY X_TOKEN", "X_TOKEN\n", 5, ""])
+@pytest.mark.parametrize("token", [
+    "MYTOKEN", "MY_TOKEN_", "my_token", "_X_TOKEN", "1X_TOKEN", "TOKEN", "MY-X_TOKEN", "MY X_TOKEN",
+    "X_TOKEN\n", 5, "", "MYFORGE_TOKEN", "AWS_SESSION_TOKEN", "NPM_TOKEN", "CI_JOB_TOKEN",
+    "GITHUB_ENTERPRISE_TOKEN", "GH_TOKEN", "GITHUB_TOKEN", "GITLAB_TOKEN", "CODEBERG_TOKEN",
+    "repohub_x_token", "Repohub_X_TOKEN", " REPOHUB_X_TOKEN", "REPOHUB_X_TOKEN ", "REPOHUB_X_TOKEN\n",
+    "REPOHUB_TOKEN", "REPOHUB__TOKEN", "REPOHUB_1X_TOKEN", "REPOHUB_X_TOKEN_", "REPOHUB_" + "A" * 60 + "_TOKEN",
+])
 def test_bad_token_env(tmp_path, token):
     loaded = load(tmp_path, entry(token_env=token))
     assert_builtins_only(loaded)
     assert len(loaded.problems) == 1 and "token_env" in loaded.problems[0]
 
 
+def test_token_env_without_prefix_says_repohub(tmp_path):
+    p = load(tmp_path, entry(token_env="AWS_SESSION_TOKEN")).problems[0]
+    assert "REPOHUB_" in p
+
+
 def test_token_env_length_limit_boundary(tmp_path):
-    ok = "A" + "B" * 62 + "_TOKEN"  # the regex allows 1 + 62 + 6 = 69 characters at most
-    assert len(ok) == 69
+    ok = "REPOHUB_A" + "B" * 50 + "_TOKEN"  # 65 characters is the maximum
+    assert len(ok) == 65
     assert load(tmp_path, entry(token_env=ok)).problems == []
-    assert len(load(tmp_path, entry(token_env="A" + ok)).problems) == 1
+    assert len(load(tmp_path, entry(token_env=ok.replace("_A", "_AA", 1))).problems) == 1
 
 
-@pytest.mark.parametrize("token", ["GITHUB_TOKEN", "GH_TOKEN", "GITLAB_TOKEN", "CODEBERG_TOKEN"])
-def test_token_env_cannot_reuse_builtin_variable(tmp_path, token):
-    loaded = load(tmp_path, entry(token_env=token))
-    assert_builtins_only(loaded)
-    assert "already used" in loaded.problems[0]
+def test_default_token_is_prefixed_and_never_a_bare_name(tmp_path):
+    loaded = load(tmp_path, entry(id="aws-session") + entry(id="npm", url="https://n.example.org"))
+    assert loaded.problems == []
+    assert loaded.registry.get("aws-session").token_env == ("REPOHUB_AWS_SESSION_TOKEN",)
+    assert loaded.registry.get("npm").token_env == ("REPOHUB_NPM_TOKEN",)
+    for s in loaded.registry.specs:
+        if not s.builtin:
+            assert all(t.startswith("REPOHUB_") for t in s.token_env)
+
+
+def test_default_token_for_one_letter_and_max_length_ids(tmp_path):
+    loaded = load(tmp_path, entry(id="x") + entry(id="a" + "b-" * 9 + "c", url="https://l.example.org"))
+    assert loaded.problems == []
+    assert loaded.registry.get("x").token_env == ("REPOHUB_X_TOKEN",)
 
 
 def test_token_env_unique_across_extras(tmp_path):
-    text = (entry(id="aa", url="https://a.example.org", token_env="SHARED_TOKEN")
-            + entry(id="bb", url="https://b.example.org", token_env="SHARED_TOKEN"))
+    text = (entry(id="aa", url="https://a.example.org", token_env="REPOHUB_SHARED_TOKEN")
+            + entry(id="bb", url="https://b.example.org", token_env="REPOHUB_SHARED_TOKEN"))
     loaded = load(tmp_path, text)
     assert loaded.registry.ids == BUILTIN_IDS + ("aa",)
     assert loaded.problems[0].startswith("hosts file entry #1: ")
 
 
 def test_explicit_token_env_that_is_another_hosts_default(tmp_path):
-    # aa's default is AA_TOKEN; bb explicitly asks for it (second) and must be refused.
+    # aa's default is REPOHUB_AA_TOKEN; bb explicitly asks for it (second) and must be refused.
     text = (entry(id="aa", url="https://a.example.org")
-            + entry(id="bb", url="https://b.example.org", token_env="AA_TOKEN"))
+            + entry(id="bb", url="https://b.example.org", token_env="REPOHUB_AA_TOKEN"))
     loaded = load(tmp_path, text)
     assert loaded.registry.ids == BUILTIN_IDS + ("aa",)
     assert len(loaded.problems) == 1
@@ -299,22 +318,23 @@ def test_explicit_token_env_that_is_another_hosts_default(tmp_path):
 
 def test_default_token_collisions(tmp_path):
     # first takes AA_BB_TOKEN explicitly, so the default of id "aa-bb" collides
-    text = (entry(id="first", url="https://a.example.org", token_env="AA_BB_TOKEN")
+    text = (entry(id="first", url="https://a.example.org", token_env="REPOHUB_AA_BB_TOKEN")
             + entry(id="aa-bb", url="https://b.example.org"))
     loaded = load(tmp_path, text)
     assert loaded.registry.ids == BUILTIN_IDS + ("first",)
-    assert "default token variable AA_BB_TOKEN" in loaded.problems[0]
+    assert "default token variable REPOHUB_AA_BB_TOKEN" in loaded.problems[0]
     # the same id with an explicit variable works
-    loaded = load(tmp_path, text + "  token_env: AA_OTHER_TOKEN\n")
+    loaded = load(tmp_path, text + "  token_env: REPOHUB_AA_OTHER_TOKEN\n")
     assert loaded.registry.ids == BUILTIN_IDS + ("first", "aa-bb")
 
 
-def test_default_token_colliding_with_builtin_is_impossible_but_checked(tmp_path):
-    # ids cannot produce GITHUB_TOKEN ("github" is reserved), so a collision needs an explicit one
-    loaded = load(tmp_path, entry(id="gh"))
-    # "gh" default is GH_TOKEN which the built-in GitHub already uses: must be refused
-    assert_builtins_only(loaded)
-    assert "default token variable GH_TOKEN" in loaded.problems[0]
+def test_builtin_variables_are_never_bound_to_extras(tmp_path):
+    used = {t for h in hosts.BUILTIN_HOSTS for t in h.token_env}
+    loaded = load(tmp_path, entry(id="gh") + entry(id="github2", url="https://g.example.org"))
+    assert loaded.problems == []
+    for s in loaded.registry.specs:
+        if not s.builtin:
+            assert not used & set(s.token_env)
 
 
 def test_unknown_keys(tmp_path):
@@ -340,7 +360,7 @@ def test_name_must_be_string(tmp_path):
 def test_invalid_entry_does_not_stop_later_ones_and_numbering_is_zero_based(tmp_path):
     text = ("- 1\n" + entry(id="good1", url="https://a.example.org")
             + entry(id="Bad", url="https://b.example.org")
-            + entry(id="good2", url="https://c.example.org", token_env="G2_TOKEN") + "- x\n")
+            + entry(id="good2", url="https://c.example.org", token_env="REPOHUB_G2_TOKEN") + "- x\n")
     loaded = load(tmp_path, text)
     assert loaded.registry.ids == BUILTIN_IDS + ("good1", "good2")
     nums = [re.match(r"hosts file entry #(\d+): ", p).group(1) for p in loaded.problems]
@@ -375,7 +395,7 @@ def _run_with_timeout(fn):
     t = threading.Thread(target=target, daemon=True)
     t.start()
     t.join(timeout=5)
-    assert not t.is_alive(), "loader hung (it must never open a FIFO)"
+    assert not t.is_alive(), "loader hung (opened a FIFO, or expanded an alias bomb)"
     assert "e" not in box, box.get("e")
     return box["v"]
 
@@ -412,11 +432,126 @@ def test_symlink_to_regular_file_works(tmp_path):
     assert loaded.problems == [] and "myforge" in loaded.registry
 
 
-def test_dangling_symlink_is_silent_like_missing(tmp_path):
+def test_dangling_symlink_is_a_problem(tmp_path):
     link = tmp_path / "hosts.yaml"
     link.symlink_to(tmp_path / "gone.yaml")
-    loaded = load_hosts(link)
-    assert_builtins_only(loaded) and loaded.problems == []
+    assert "broken symlink" in file_problem(load_hosts(link), link)
+
+
+def test_symlink_loop_is_a_problem(tmp_path):
+    a, b = tmp_path / "a.yaml", tmp_path / "hosts.yaml"
+    a.symlink_to(b)
+    b.symlink_to(a)
+    assert "broken symlink" in file_problem(load_hosts(b), b)
+
+
+def test_symlink_to_directory_is_not_a_regular_file(tmp_path):
+    d = tmp_path / "d"
+    d.mkdir()
+    link = tmp_path / "hosts.yaml"
+    link.symlink_to(d)
+    assert "not a regular file" in file_problem(load_hosts(link), link)
+
+
+def test_plain_missing_file_stays_silent(tmp_path):
+    assert load_hosts(tmp_path / "missing.yaml").problems == []
+
+
+def test_empty_string_path_is_not_the_personal_path(tmp_path, monkeypatch):
+    def boom():
+        raise AssertionError("personal path must not be used")
+
+    monkeypatch.setattr("repohub.core.hostsconfig.personal_hosts_path", boom)
+    monkeypatch.chdir(tmp_path)
+    for fn in (load_hosts, lambda p: LoadedHosts(hosts.registry(), configure_hosts(p))):
+        loaded = fn("")
+        assert loaded.problems and "not a regular file" in loaded.problems[0]
+        assert_clean(loaded.problems)
+
+
+def test_duplicate_keys_are_a_problem(tmp_path):
+    for text in ('- {id: a, id: b, kind: forgejo, url: "https://a.example.org"}\n',
+                 '- id: aa\n  kind: forgejo\n  url: "https://a.example.org"\n  kind: forgejo\n',
+                 '- {id: aa}\n- {id: bb}\n'.replace("- {id: bb}", "- {x: 1, x: 2}")):
+        p = write(tmp_path, text)
+        assert "duplicate key" in file_problem(load_hosts(p), p)
+    # a distinct key set still loads
+    assert load(tmp_path, entry()).problems == []
+
+
+# ---- alias bombs -------------------------------------------------------------------------
+
+def _bomb(kind="list", depth=9):
+    """An inline YAML value whose str() expands exponentially but which loads instantly."""
+    if kind == "list":
+        parts = ["&l0 [" + ", ".join(["x"] * 10) + "]"]
+        parts += [f"&l{i} [" + ", ".join([f"*l{i-1}"] * 10) + "]" for i in range(1, depth)]
+        return "[" + ", ".join(parts) + f", *l{depth-1}]"
+    parts = ["&l0 {" + ", ".join(f"k{j}: x" for j in range(10)) + "}"]
+    parts += [f"&l{i} {{" + ", ".join(f"k{j}: *l{i-1}" for j in range(10)) + "}" for i in range(1, depth)]
+    return "[" + ", ".join(parts) + f", *l{depth-1}]"
+
+
+def _timed(fn):
+    import time
+    t0 = time.perf_counter()
+    out = _run_with_timeout(fn)
+    return out, time.perf_counter() - t0
+
+
+def _assert_bounded(loaded, elapsed):
+    assert elapsed < 2, elapsed
+    assert_builtins_only(loaded)
+    assert loaded.problems
+    assert all(len(p) < 400 for p in loaded.problems)
+    assert_clean(loaded.problems)
+
+
+@pytest.mark.parametrize("kind", ["list", "dict"])
+@pytest.mark.parametrize("field", ["id", "token_env", "name", "url", "kind"])
+def test_alias_bomb_in_field_is_bounded(tmp_path, kind, field):
+    bomb = _bomb(kind)
+    base = {"id": '"aa"', "kind": '"forgejo"', "url": '"https://a.example.org"'}
+    base[field] = bomb
+    text = "- {" + ", ".join(f"{k}: {v}" for k, v in base.items()) + "}\n"
+    if field == "name":  # name is only checked after the others; force an error afterwards
+        text = text.replace("}\n", ", token_env: 5}\n")
+    assert len(text) < 256 * 1024
+    p = write(tmp_path, text)
+    loaded, elapsed = _timed(lambda: load_hosts(p))
+    _assert_bounded(loaded, elapsed)
+
+
+def test_alias_bomb_as_unknown_key_value_and_entry(tmp_path):
+    for text in ("- " + _bomb() + "\n", "- {id: aa, kind: forgejo, url: 'https://a.example.org', " +
+                 "extra: " + _bomb() + "}\n"):
+        p = write(tmp_path, text)
+        loaded, elapsed = _timed(lambda: load_hosts(p))
+        _assert_bounded(loaded, elapsed)
+
+
+def test_alias_bomb_as_key(tmp_path):
+    p = write(tmp_path, "- {" + "? " + _bomb() + " : 1}\n")
+    loaded, elapsed = _timed(lambda: load_hosts(p))
+    _assert_bounded(loaded, elapsed)
+
+
+def test_bomb_defined_in_earlier_entries_used_in_later_ones(tmp_path):
+    defs = "- &l0 [" + ", ".join(["x"] * 10) + "]\n"
+    for i in range(1, 9):
+        defs += f"- &l{i} [" + ", ".join([f"*l{i-1}"] * 10) + "]\n"
+    text = defs + "- {id: *l8, kind: *l8, url: *l8, name: *l8, token_env: *l8}\n"
+    p = write(tmp_path, text)
+    loaded, elapsed = _timed(lambda: load_hosts(p))
+    _assert_bounded(loaded, elapsed)
+    assert len(loaded.problems) == 10
+
+
+def test_self_referencing_anchor(tmp_path):
+    for text in ("- &a [*a]\n", "- &a {id: *a}\n", "- {id: &a [*a], kind: forgejo, url: 'https://a.example.org'}\n"):
+        p = write(tmp_path, text)
+        loaded, elapsed = _timed(lambda: load_hosts(p))
+        _assert_bounded(loaded, elapsed)
 
 
 def test_file_over_limit(tmp_path):

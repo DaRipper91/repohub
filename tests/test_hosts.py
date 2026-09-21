@@ -79,7 +79,7 @@ def test_rejects_unknown_kind():
         HostRegistry([_spec(kind="bitbucket")])
 
 
-@pytest.mark.parametrize("bad", ["Bad", "1x", "a" * 21, "", "-x", "a_b"])
+@pytest.mark.parametrize("bad", ["Bad", "1x", "a" * 21, "", "-x", "a_b", "aa\n", "aa "])
 def test_rejects_invalid_id(bad):
     with pytest.raises(ValueError):
         HostRegistry([_spec(id=bad)])
@@ -118,3 +118,15 @@ def test_autouse_fixture_resets_after_leak_part1():
 def test_autouse_fixture_resets_after_leak_part2():
     # Passes in either order: the autouse fixture restored the built-ins.
     assert hosts.registry().ids == ("github", "gitlab", "codeberg")
+
+
+@pytest.mark.parametrize("bad", ["Git.Example.org", "git.example.org\n", "", "-x.org", "x.org-", ".x.org",
+                                 "x_y.org", "x y.org", "git.example.org/", "gït.org", "a" * 254])
+def test_rejects_invalid_domain(bad):
+    with pytest.raises(ValueError):
+        HostRegistry([_spec("a", domain=bad)])
+
+
+def test_accepts_valid_domains():
+    assert HostRegistry([_spec("a", domain="x"), _spec("b", domain="git.example.org"),
+                         _spec("c", domain="a" + "b" * 251 + "c")]).ids == ("a", "b", "c")

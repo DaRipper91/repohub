@@ -376,3 +376,64 @@ def test_shared_constants_come_from_models():
     assert models.HOSTS == ("github", "gitlab") and models.MAX_STARS == 10_000_000 and models.MAX_DAYS == 36500
     assert browse.HOSTS is models.HOSTS and queryparse.HOSTS is models.HOSTS
     assert queryparse.LANG_RE.match("C++") and queryparse.TOPIC_RE.match("tui")
+
+
+# ---- alias-bomb regression: untrusted YAML containers must never be str()'d into messages ----
+
+def _bomb_value(kind="list", depth=9):
+    if kind == "list":
+        parts = ["&l0 [" + ", ".join(["x"] * 10) + "]"]
+        parts += [f"&l{i} [" + ", ".join([f"*l{i-1}"] * 10) + "]" for i in range(1, depth)]
+    else:
+        parts = ["&l0 {" + ", ".join(f"k{j}: x" for j in range(10)) + "}"]
+        parts += [f"&l{i} {{" + ", ".join(f"k{j}: *l{i-1}" for j in range(10)) + "}"
+                  for i in range(1, depth)]
+    return "[" + ", ".join(parts) + f", *l{depth-1}]"
+
+
+def _bomb_cases():
+    for kind in ("list", "dict"):
+        b = _bomb_value(kind)
+        yield f"- name: {b}\n"
+        yield f"- name: S\n  query: {b}\n"
+        yield f"- name: S\n  language: {b}\n"
+        yield f"- name: S\n  topic: {b}\n"
+        yield f"- name: S\n  min_stars: {b}\n"
+        yield f"- name: S\n  repos: [{b}]\n"
+        yield f"- name: S\n  repos: [{{repo: 'github:a/b', note: {b}}}]\n"
+        yield f"- name: S\n  repos: [{{repo: {b}}}]\n"
+        yield f"- name: S\n  repos: [{{repo: 'github:a/b', snapshot: {{stars: {b}}}}}]\n"
+        yield f"- name: S\n  repos: [{{repo: 'github:a/b', snapshot: {{description: {b}}}}}]\n"
+        yield f"- name: S\n  repos: [{{repo: 'github:a/b', snapshot: {b}}}]\n"
+        yield f"- name: S\n  extra: {b}\n"
+        yield f"- {b}\n"
+        yield f"- name: S\n  repos: {b}\n"
+
+
+def test_alias_bombs_do_not_expand_in_messages(tmp_path):
+    import time
+
+    for i, text in enumerate(_bomb_cases()):
+        p = tmp_path / f"s{i}.yaml"
+        p.write_text(text, encoding="utf-8")
+        box = {}
+
+        def run():
+            box["r"] = load_all_shelves(p)
+
+        t0 = time.perf_counter()
+        th = threading.Thread(target=run, daemon=True)
+        th.start()
+        th.join(timeout=5)
+        assert not th.is_alive(), text[:80]
+        assert time.perf_counter() - t0 < 2, text[:80]
+        problems = box["r"].problems
+        assert len(problems) == 1, text[:80]
+        assert len(problems[0]) < 500
+
+
+def test_show_describes_containers_by_type_only():
+    assert browse._show([1, 2]) == "<list>"
+    assert browse._show({"a": 1}) == "<dict>"
+    assert browse._show(5) == "5" and browse._show(None) == "None" and browse._show(True) == "True"
+    assert browse._show("a\x1b[31m" + "x" * 100) == repr(("a[31m" + "x" * 100)[:60])
