@@ -98,6 +98,20 @@ def _msg(value: object) -> str:
     return _cell(value)[:MSG_CAP]
 
 
+def _fit(text: str, width: int) -> str:
+    text = _cell(text)
+    return text if len(text) <= width else text[:width - 1] + "\u2026"
+
+
+_JSON_ESCAPES = {c: f"\\u{c:04x}" for c in
+                 [*range(0x7f, 0xa0), 0x2028, 0x2029, 0x061c, 0x200e, 0x200f,
+                  *range(0x202a, 0x202f), *range(0x2066, 0x206a)]}
+
+
+def _dumps(obj: dict) -> str:
+    return json.dumps(obj, ensure_ascii=False, indent=2).translate(_JSON_ESCAPES)
+
+
 def _short(text: str, width: int = DESC_WIDTH) -> str:
     text = _cell(text)
     return text if len(text) <= width else text[:width - 3] + "..."
@@ -119,7 +133,7 @@ def _table(headers: list[str], rows: list[list[str]], right: tuple[int, ...] = (
 
 
 def _repo_table(repos: list[Repo]) -> str:
-    rows = [[r.slug, r.host, str(r.stars), r.language, _date(r.pushed_at), _short(r.description)] for r in repos]
+    rows = [[_fit(r.slug, 60), _fit(r.host, 8), str(r.stars), _fit(r.language, 20), _date(r.pushed_at), _short(r.description)] for r in repos]
     return _table(["repo", "host", "stars", "language", "updated", "description"], rows, right=(2,))
 
 
@@ -138,7 +152,7 @@ class _Out:
         self.stderr.write(_msg(text) + "\n")
 
     def json(self, obj: dict) -> None:
-        self.stdout.write(json.dumps(obj, ensure_ascii=False, indent=2) + "\n")
+        self.stdout.write(_dumps(obj) + "\n")
 
     def problems(self, problems, prefix: str = "Ignored: ") -> None:
         for p in list(problems)[:MAX_PROBLEMS_SHOWN]:

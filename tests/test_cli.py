@@ -74,7 +74,7 @@ def test_query_syntax_and_problems_to_stderr():
     g = gh()
     hub = make_hub(g)
     code, out, err = run(["search", "tui", "lang:go", "stars:>7", "days:abc", "--host", "github"], hub)
-    assert g.last_filters.language == "Go" or g.last_filters.language == "go"
+    assert g.last_filters.language == "go"
     assert g.last_filters.min_stars == 7 and g.last_query == "tui"
     assert "Ignored: days needs a whole number" in err
     assert "Ignored" not in out
@@ -190,10 +190,12 @@ def test_favorites_no_provider_calls():
 
 
 def test_human_table_and_hostile_data():
-    bad = mk(slug="o/evil", description="\x1b[31mred\x1b[0m\x07 " + "long " * 30, language="G\x00o")
+    bad = mk(slug="o/evil", description="\x1b[31mred\x1b[0m\x07\u202e\u2028\x85 " + "long " * 30,
+             language="G\x00o")
     code, out, err = run(["search", "x"], make_hub(gh([bad])))
     assert "o/evil" in out and "2026-09-10" in out and "..." in out
     assert not CONTROL.search(out) and "\x1b" not in out
+    assert not re.search("[\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c\u2028\u2029\x80-\x9f]", out)
     assert all(len(line) < 200 for line in out.splitlines())
 
 
@@ -236,10 +238,6 @@ def test_unknown_subcommand_and_no_command():
 
 
 def test_unexpected_exception_is_one_line():
-    class Boom(FakeProvider):
-        async def search(self, *a, **k):
-            raise RuntimeError(TOKEN)
-
     # search_all turns provider exceptions into "unexpected error"; force a hub-level failure instead
     hub = make_hub(gh())
 
@@ -256,3 +254,49 @@ def test_keyboard_interrupt_returns_130():
         raise KeyboardInterrupt
 
     assert cli.main(["favorites"], hub_factory=factory, stdout=io.StringIO(), stderr=io.StringIO()) == 130
+
+
+RAW_BAD = "[\u2028\u2029\x85\x7f\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c\x80-\x9f]"
+
+
+def test_json_escapes_dangerous_characters():
+    desc = "a\u2028b\x85c\x7fd\u202ee\u200ef\u2029g\u061ch é 日本語"
+    code, out, err = run(["search", "x", "--json"], make_hub(gh([mk(description=desc)])))
+    assert not re.search(RAW_BAD, out)
+    assert "é" in out and "日本語" in out
+    assert json.loads(out)["repos"][0]["description"] == desc
+
+
+def test_table_cell_widths_are_capped():
+    big = mk(slug="o/" + "s" * 5000, language="L" * 5000, host="github")
+    code, out, err = run(["search", "x"], make_hub(gh([big])))
+    lines = out.splitlines()
+    assert all(len(line) < 200 for line in lines)
+    row = lines[1]
+    assert "s" * 61 not in row and "L" * 21 not in row and "…" in row
+    hb = mk(slug="o/r2", host="gitlab" + "z" * 100)
+    code, out, err = run(["search", "x"], make_hub(FakeProvider("gitlab", [hb])))
+    assert len(out.splitlines()[1].split()[1]) <= 8
+
+
+def _curated_run(g):
+    shelf = Shelf("C", repos=(ShelfEntry("github", "o/r"), ShelfEntry("github", "x/y")))
+    import repohub.cli as c
+    orig = c.load_all_shelves
+    c.load_all_shelves = lambda *a, **k: LoadedShelves([shelf], [])
+    try:
+        return run(["shelf", "C", "--json"], make_hub(g))
+    finally:
+        c.load_all_shelves = orig
+
+
+def test_curated_all_refreshes_fail_exit_1():
+    code, out, err = _curated_run(gh(detail_error=ProviderError("github", "down")))
+    doc = json.loads(out)
+    assert code == 1 and doc["errors"] and not any(r["live"] for r in doc["repos"])
+
+
+def test_curated_some_refreshes_succeed_exit_3():
+    code, out, err = _curated_run(gh([mk(slug="o/r")]))
+    doc = json.loads(out)
+    assert code == 3 and [r["live"] for r in doc["repos"]] == [True, False]
