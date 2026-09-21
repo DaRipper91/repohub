@@ -40,11 +40,10 @@ def _bounded(lo: int, hi: int) -> Callable[[str], int]:
 
 
 def _version() -> str:
-    try:
-        from importlib.metadata import version
-        return f"repohub {version('repohub')}"
-    except Exception:
-        return "repohub"
+    # Same source as repohub-tui: the installed metadata can be stale in an editable install.
+    from repohub import __version__
+
+    return f"repohub {__version__}"
 
 
 def _build_parser() -> argparse.ArgumentParser:

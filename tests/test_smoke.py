@@ -36,3 +36,15 @@ def test_tui_version_and_unknown_flag(monkeypatch, capsys):
     with pytest.raises(SystemExit) as e:
         main(["--bogus"])
     assert e.value.code == 2
+
+
+def test_cli_version_matches_package_version(capsys):
+    import pytest
+
+    from repohub import __version__
+    from repohub.cli import main
+
+    with pytest.raises(SystemExit) as e:
+        main(["--version"], hub_factory=lambda: (_ for _ in ()).throw(AssertionError("hub built")))
+    assert e.value.code == 0
+    assert capsys.readouterr().out.strip() == f"repohub {__version__}"
