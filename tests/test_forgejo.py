@@ -527,3 +527,89 @@ def test_constructor_refuses_bad_base_url(url):
 def test_constructor_accepts_normal_base_url():
     ForgejoProvider("x", "https://git.example.org/api/v1")
     ForgejoProvider("x", "https://git.example.org:3000/api/v1/")
+
+
+# ---- multi-word queries (Forgejo matches q as ONE keyword) ----
+def _mk(name, desc="", topics=()):
+    return dict(ITEM, full_name=name, description=desc, topics=list(topics))
+
+
+@respx.mock
+async def test_two_words_send_longest_and_filter_client_side():
+    items = [_mk("o/by-name-wayland"), _mk("o/a", "A WAYLAND thing"), _mk("o/b", "", ["Wayland"]),
+             _mk("o/c", "terminal only"), _mk("o/d", "nothing")]
+    route = respx.get(f"{API}/repos/search").mock(return_value=search_resp(*items))
+    repos = await ForgejoProvider("codeberg", API).search("wayland terminal", SearchFilters())
+    assert route.calls.last.request.url.params["q"] == "terminal"
+    # every word must appear in name, description or topics
+    assert [r.slug for r in repos] == []
+    items = [_mk("o/terminal-wayland"), _mk("o/a", "A WAYLAND terminal"), _mk("o/b", "", ["Wayland", "terminal"]),
+             _mk("o/c", "terminal only"), _mk("o/wayland-x", "", ["other"])]
+    respx.get(f"{API}/repos/search").mock(return_value=search_resp(*items))
+    repos = await ForgejoProvider("codeberg", API).search("wayland terminal", SearchFilters())
+    assert [r.slug for r in repos] == ["o/terminal-wayland", "o/a", "o/b"]
+
+
+@respx.mock
+async def test_words_match_across_fields_and_casefold():
+    items = [_mk("o/wayland-tool", "Straße bahn"), _mk("o/plain", "STRASSE")]
+    respx.get(f"{API}/repos/search").mock(return_value=search_resp(*items))
+    repos = await ForgejoProvider("codeberg", API).search("wayland STRASSE", SearchFilters())
+    assert [r.slug for r in repos] == ["o/wayland-tool"]
+
+
+@respx.mock
+async def test_longest_word_tie_picks_first():
+    route = respx.get(f"{API}/repos/search").mock(return_value=search_resp())
+    await ForgejoProvider("codeberg", API).search("  abcd   efgh ij ", SearchFilters())
+    assert route.calls.last.request.url.params["q"] == "abcd"
+
+
+@respx.mock
+async def test_single_word_unchanged():
+    route = respx.get(f"{API}/repos/search").mock(return_value=search_resp(_mk("o/r", "zzz")))
+    repos = await ForgejoProvider("codeberg", API).search(" cli ", SearchFilters())
+    p = route.calls.last.request.url.params
+    assert dict(p) == {"q": "cli", "sort": "stars", "order": "desc", "limit": "30", "archived": "false"}
+    assert len(repos) == 1  # the server's match is trusted, no client-side word filter
+
+
+@respx.mock
+async def test_more_than_six_words_capped():
+    route = respx.get(f"{API}/repos/search").mock(return_value=search_resp(_mk("o/a1-a2-a3-a4-a5-a6")))
+    repos = await ForgejoProvider("codeberg", API).search("a1 a2 a3 a4 a5 a6 longestseventh", SearchFilters())
+    assert route.calls.last.request.url.params["q"] == "a1"  # the 7th word is ignored, even though longer
+    assert len(repos) == 1
+
+
+@pytest.mark.parametrize("text", ["", "   ", "\t\n "])
+@respx.mock
+async def test_whitespace_only_is_no_text(text):
+    route = respx.get(f"{API}/repos/search").mock(return_value=search_resp(_mk("o/r")))
+    repos = await ForgejoProvider("codeberg", API).search(text, SearchFilters())
+    assert "q" not in route.calls.last.request.url.params and len(repos) == 1
+
+
+@respx.mock
+async def test_special_characters_stay_encoded():
+    route = respx.get(f"{API}/repos/search").mock(return_value=search_resp())
+    await ForgejoProvider("codeberg", API).search("a&mode=x b=1#frag", SearchFilters())
+    req = route.calls.last.request
+    assert req.url.params["q"] == "a&mode=x" and "mode" not in req.url.params
+    assert "#" not in str(req.url).split("?", 1)[1] and "a&mode" not in str(req.url)
+
+
+@respx.mock
+async def test_topic_plus_multiword_text():
+    items = [_mk("o/wayland-terminal", "", ["cli"]), _mk("o/wayland-terminal2", "", ["web"]), _mk("o/wayland-only", "", ["cli"])]
+    route = respx.get(f"{API}/repos/search").mock(return_value=search_resp(*items))
+    repos = await ForgejoProvider("codeberg", API).search("wayland terminal", SearchFilters(topic="cli"))
+    p = route.calls.last.request.url.params
+    assert p["q"] == "wayland" and "topic" not in p
+    assert [r.slug for r in repos] == ["o/wayland-terminal"]
+
+
+@respx.mock
+async def test_empty_page_multiword():
+    respx.get(f"{API}/repos/search").mock(return_value=search_resp())
+    assert await ForgejoProvider("codeberg", API).search("wayland terminal", SearchFilters()) == []

@@ -14,6 +14,7 @@ from repohub.core.providers.base import NotFound, ProviderError, RateLimited, gu
 README_NAMES = ("README.md", "README.markdown", "README.rst", "README.txt", "README")
 MAX_LIMIT = 50
 MAX_SLUG = 200
+MAX_WORDS = 6
 
 
 def _count(value, default: int | None = None) -> int:
@@ -131,7 +132,11 @@ class ForgejoProvider:
 
     @guard_parse
     async def search(self, query: str, filters: SearchFilters, per_page: int = 30) -> list[Repo]:
-        text = query.strip()
+        # Forgejo's /repos/search treats the whole q as ONE keyword (verified against codeberg.org on 2026-09-21:
+        # "wayland" and "terminal" match, "wayland terminal" matches nothing). So with several words we send the
+        # longest one and require every word client-side; this filter can shrink a page below `limit`.
+        words = [w for w in (clean_text(w) for w in query.split()[:MAX_WORDS]) if w]
+        text = max(words, key=len) if words else ""
         params: dict = {"sort": "updated" if filters.sort == "updated" else "stars", "order": "desc",
                         "limit": max(1, min(per_page, MAX_LIMIT))}
         client_topic = None
@@ -152,6 +157,14 @@ class ForgejoProvider:
         if not isinstance(data, list):
             raise TypeError("data")
         repos = [self._to_repo(i) for i in data if self._slug_ok(i)]  # invalid names are dropped, not fatal
+        if len(words) > 1:
+            folded = [w.casefold() for w in words]
+
+            def has_all(r: Repo) -> bool:
+                hay = " ".join((r.slug, r.description, *r.topics)).casefold()
+                return all(w in hay for w in folded)
+
+            repos = [r for r in repos if has_all(r)]
         if client_topic:
             want = client_topic.strip().casefold()
             repos = [r for r in repos if want in (t.casefold() for t in r.topics)]
