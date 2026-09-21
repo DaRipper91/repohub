@@ -26,7 +26,8 @@
   <a href="#-command-line">Command line</a> ·
   <a href="#-how-it-works">How it works</a> ·
   <a href="#-security">Security</a> ·
-  <a href="#-development">Development</a>
+  <a href="#-development">Development</a> ·
+  <a href="#-roadmap">Roadmap</a>
 </p>
 
 <p align="center">
@@ -41,8 +42,9 @@
 
 | | |
 |---|---|
-| 🔎 **One search, two hosts** | GitHub and GitLab are queried together and merged into a single ranked list. Filter by language, minimum stars, recent activity and host. If one host fails or rate-limits you, the other host's results still show. |
-| 🗂️ **Store-style shelves** | Browse curated shelves (Terminal tools, Local AI, Retro and emulation, Self-hosted, Creative coding, Networking) without typing a query. Shelves are plain YAML: packaged ones, plus your own in a personal file. |
+| 🔎 **One search, two hosts** | GitHub and GitLab are queried together and merged into a single ranked list. Filter by language, minimum stars, recent activity and host; sort by stars, last update or forks; hide forks. A small [search syntax](#-search-syntax) (`lang:rust stars:>500 nofork sort:updated`) works the same in the web app, the terminal app and the CLI. If one host fails or rate-limits you, the other host's results still show. |
+| 🗂️ **Store-style shelves** | Browse shelves without typing a query: six search shelves (Terminal tools, Local AI, Retro and emulation, Self-hosted, Creative coding, Networking) and eight curated **Catalog** shelves of 171 hand-picked projects with a note on each. Add your own shelves in a personal YAML file. |
+| 💻 **A scriptable CLI** | `repohub search`, `repo`, `shelves`, `shelf` and `favorites` print readable tables or stable JSON, with documented exit codes. Read-only by design. |
 | 📄 **Repo pages that read like an app page** | Rendered README, stars, forks, license, topics, and the latest release with its files. A green **arm64** badge appears when a release ships an arm64 or aarch64 build. |
 | ⭐ **Favorites** | Save repos to a local wishlist. Stats refresh in the background and never block the page. |
 | 📥 **Safe clone** | Shows the exact destination and asks before doing anything. Shallow clone, `https` on `github.com` or `gitlab.com` only, and no install or build steps are ever run. |
@@ -67,6 +69,7 @@ Then start whichever front end you like:
 ```bash
 .venv/bin/repohub-web    # http://127.0.0.1:8765   (options: --host, --port)
 .venv/bin/repohub-tui    # terminal app            (options: --help, --version)
+.venv/bin/repohub        # command line            (repohub --help; see "Command line" below)
 ```
 
 Add a token for higher API rate limits (optional, see [Tokens](#-tokens-and-configuration)):
@@ -323,7 +326,72 @@ RepoHub renders untrusted data (descriptions, READMEs, release names) and runs `
 
 The offline suite uses mocked HTTP and fake providers, so it needs no network, no tokens and no real `git`. The live tests use a token found as described above, or run anonymously and may hit rate limits. CI runs the offline suite on Python 3.11 and 3.12.
 
-The design and the task-by-task implementation plan are in [`docs/plans/`](docs/plans/).
+The design and the task-by-task implementation plans are in [`docs/plans/`](docs/plans/).
+
+## 🗺️ Roadmap
+
+RepoHub grows in phases. Each phase gets a written design, a task-by-task plan, a fresh implementer for every task, and an independent review (with a security pass for anything that touches untrusted data, URLs, files or processes) before the next task starts. The roadmap and its rationale are in [`docs/plans/2026-09-21-phase1-design.md`](docs/plans/2026-09-21-phase1-design.md).
+
+| Phase | What it adds | Status |
+|---|---|---|
+| **v1** | Cross-host search, shelves, repo pages, favorites, safe clone, web app and terminal app | ✅ Done (13 tasks) |
+| **1. Foundations** | Filters and sorting everywhere, curated shelves and the 171-project catalog, the scriptable CLI (v0.2.0) | ✅ Done (13 tasks) |
+| **2. Machine awareness** | "Already cloned" badges, a "Can I run this here?" panel (arm64 release assets, installed toolchains), and a shared project detector | 🔨 Next |
+| **3. Guided install and run** | Shows the exact install and run commands for a cloned repo; you approve each command before it runs, and output streams live | 📝 Planned |
+| **4. Favorites 2.0** | Tags, notes and collections for favorites, and a "new releases" tab | 📝 Planned |
+| **5. Claude Code** | An MCP server (read-only by default), "Open in Claude Code" after cloning, and a `/repohub` skill built on the CLI | 📝 Planned |
+| **6. UI redesign** | A better-looking web app and terminal app, done once the features above exist | 📝 Planned |
+
+Standing rules for every phase: the existing clone protections stay as they are, and running a repository's own code (Phase 3) is always a separate, explicit, opt-in action that shows exactly what it will run.
+
+<details>
+<summary><b>Tasks: v1 (all done)</b></summary>
+
+1. ✅ Project scaffold
+2. ✅ Models and architecture parsing
+3. ✅ Token discovery
+4. ✅ SQLite cache with TTL
+5. ✅ GitHub provider
+6. ✅ GitLab provider
+7. ✅ Cross-host search
+8. ✅ Favorites store
+9. ✅ Safe clone
+10. ✅ Shelves and the Hub facade
+11. ✅ Web app
+12. ✅ Terminal app
+13. ✅ README, live smoke tests and final verification
+
+</details>
+
+<details>
+<summary><b>Tasks: Phase 1, Foundations (all done)</b></summary>
+
+1. ✅ Model fields: `fork`, `sort`, `hide_forks`
+2. ✅ Provider support for sorting and fork data
+3. ✅ Merge, hide forks and final sort
+4. ✅ Shared query-syntax parser
+5. ✅ Web filters, sorting and query syntax
+6. ✅ Terminal app query syntax
+7. ✅ Shelf model, loader and personal shelves file
+8. ✅ Hub support for curated shelves
+9. ✅ Catalog shelves (171 projects)
+10. ✅ Web curated shelves and shelf pages
+11. ✅ Terminal curated shelves with paging
+12. ✅ The `repohub` CLI
+13. ✅ Docs, version bump and final verification
+
+</details>
+
+<details>
+<summary><b>Sketch of the next phases</b> (each phase's real task list is written in its own plan)</summary>
+
+- **Phase 2, machine awareness:** a project detector (Cargo.toml, pyproject or requirements, package.json, Makefile, Dockerfile); a toolchain check (cargo, uv, node, go and similar); a "can I run this here?" verdict combining arm64 assets and installed tools; a scan of your clone folder for "already cloned" badges in the web app, the terminal app and the CLI.
+- **Phase 3, guided install and run:** proposing commands from the detector; an approval step for every command in the web and terminal apps; a runner confined to the cloned folder that streams output; strict review because it runs the repository's own code.
+- **Phase 4, favorites 2.0:** storage for tags, notes and collections; editing and filtering in every interface; a "new releases" view built on the existing release fetching.
+- **Phase 5, Claude Code:** a read-only MCP server (search, read READMEs and releases, list favorites); an "Open in Claude Code" action after cloning; a `/repohub` skill on top of the CLI; cloning or installing through Claude Code stays a separate, individually approved action.
+- **Phase 6, UI redesign:** a design pass over the web and terminal apps, with fresh screenshots.
+
+</details>
 
 ## ⚠️ Known limitations
 
@@ -337,7 +405,7 @@ The design and the task-by-task implementation plan are in [`docs/plans/`](docs/
 - GitLab cannot sort by forks or hide forks server-side, so those options only apply to the results that were fetched.
 - Remote images in READMEs can load in the web app (the CSP allows `img-src *`), which shows your IP address to those hosts.
 - The cache is never purged; expired entries are only overwritten.
-- Not included in v1: accounts or login flows, starring or forking from inside the app, other hosts (Codeberg, Bitbucket), and recommendations.
+- Not included yet: accounts or login flows, starring or forking from inside the app, other hosts (Codeberg, Bitbucket), and recommendations. See the [roadmap](#-roadmap) for what is planned.
 
 ## 📜 License
 
