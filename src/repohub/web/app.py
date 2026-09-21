@@ -18,8 +18,9 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from repohub.core.browse import load_shelves
 from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_clone
-from repohub.core.models import SearchFilters
+from repohub.core.models import SORTS, SearchFilters
 from repohub.core.providers.base import NotFound, ProviderError, valid_slug
+from repohub.core.queryparse import parse_query
 
 HERE = Path(__file__).parent
 HOSTS = ("github", "gitlab")
@@ -108,17 +109,21 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
     @app.get("/search", response_class=HTMLResponse)
     async def search(request: Request, q: str = "", language: str = "", min_stars: str = "",
                      days: str = "",
-                     host: str = "both", archived: str = ""):
+                     host: str = "both", archived: str = "", sort: str = "stars", hide_forks: str = ""):
         if host != "both" and host not in HOSTS:
             raise HTTPException(400, "bad host")
+        if sort not in SORTS:
+            raise HTTPException(400, "bad sort")
         min_stars = _int_param(min_stars, "min_stars", 10_000_000)
         days = _int_param(days, "days", 36500)
         filters = SearchFilters(language=language or None, min_stars=min_stars,
                                 updated_within_days=days or None, hosts=HOSTS if host == "both" else (host,),
-                                include_archived=bool(archived))
-        result = await hub.search(q, filters)
-        return page(request, "search.html", q=q, result=result, limit=None,
-                    form=dict(language=language, min_stars=min_stars, days=days, host=host, archived=archived))
+                                include_archived=bool(archived), sort=sort, hide_forks=bool(hide_forks))
+        parsed = parse_query(q, filters)
+        result = await hub.search(parsed.text, parsed.filters)
+        return page(request, "search.html", q=q, result=result, limit=None, problems=parsed.problems[:11],
+                    form=dict(language=language, min_stars=min_stars, days=days, host=host, archived=archived,
+                              sort=sort, hide_forks=hide_forks))
 
     @app.get("/repo/{host}/{slug:path}", response_class=HTMLResponse)
     async def repo_page(request: Request, host: str, slug: str):

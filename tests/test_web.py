@@ -284,3 +284,61 @@ def test_unfavorite_still_works_when_provider_is_down(tmp_path):
     client = TestClient(create_app(hub, tmp_path, session_token=TOKEN, shelves=[]), base_url="http://localhost")
     assert client.post("/favorite", data={"host": "github", "slug": "o/r", "token": TOKEN}).status_code == 200
     assert not hub.favorites.is_favorite("github:o/r")
+
+
+def _prov(setup):
+    _, hub, _ = setup
+    return hub.providers["github"] if hasattr(hub, "providers") else None
+
+
+@pytest.fixture
+def fp(tmp_path):
+    gh = FakeProvider("github", [mk("github", "o/r", 50)])
+    app = create_app(make_hub(gh), tmp_path, session_token=TOKEN, shelves=[])
+    return TestClient(app, base_url="http://localhost"), gh
+
+
+def test_search_query_syntax_reaches_provider(fp):
+    client, gh = fp
+    assert client.get("/search", params={"q": "tui lang:rust stars:500 nofork sort:updated"}).status_code == 200
+    f = gh.last_filters
+    assert gh.last_query == "tui" and f.language == "rust" and f.min_stars == 500
+    assert f.hide_forks is True and f.sort == "updated"
+
+
+def test_search_form_fields_combine_and_tokens_override(fp):
+    client, gh = fp
+    client.get("/search", params={"q": "x", "sort": "forks", "hide_forks": "1"})
+    assert gh.last_filters.sort == "forks" and gh.last_filters.hide_forks is True
+    client.get("/search", params={"q": "x sort:updated", "sort": "forks"})
+    assert gh.last_filters.sort == "updated"
+
+
+def test_search_bad_token_shows_banner_and_keeps_query(fp):
+    client, _ = fp
+    r = client.get("/search", params={"q": "x stars:abc"})
+    assert r.status_code == 200 and "Ignored:" in r.text and "stars needs a whole number" in r.text
+    assert 'value="x stars:abc"' in r.text
+
+
+def test_search_rejects_bad_sort(fp):
+    client, _ = fp
+    assert client.get("/search", params={"q": "x", "sort": "bogus"}).status_code == 400
+
+
+def test_search_bar_shows_sort_and_hide_forks_state(fp):
+    client, _ = fp
+    r = client.get("/search", params={"q": "x", "sort": "forks", "hide_forks": "1"})
+    assert 'name="sort"' in r.text and '<option value="forks" selected>' in r.text
+    assert 'name="hide_forks" value="1" checked' in r.text
+    r = client.get("/search", params={"q": "x"})
+    assert '<option value="stars" selected>' in r.text and 'name="hide_forks" value="1" checked' not in r.text
+
+
+def test_search_problem_banners_are_escaped_and_capped(fp):
+    client, _ = fp
+    r = client.get("/search", params={"q": "lang:<script>alert(1)</script> stars:[/]"})
+    assert r.status_code == 200 and "<script>alert" not in r.text and "&lt;script&gt;" in r.text
+    many = " ".join(f"stars:x{i}" for i in range(40))
+    r = client.get("/search", params={"q": many})
+    assert r.text.count("Ignored:") <= 11

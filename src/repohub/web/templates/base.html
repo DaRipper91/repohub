@@ -19,6 +19,10 @@
       {% for h in ["both", "github", "gitlab"] %}<option value="{{ h }}" {% if form and form.host == h %}selected{% endif %}>{{ h }}</option>{% endfor %}
     </select>
     <label><input type="checkbox" name="archived" value="1" {% if form and form.archived %}checked{% endif %}> archived</label>
+    <select name="sort" aria-label="Sort by">
+      {% for s in ["stars", "updated", "forks"] %}<option value="{{ s }}" {% if (form.sort if form and form.sort else "stars") == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+    </select>
+    <label><input type="checkbox" name="hide_forks" value="1" {% if form and form.hide_forks %}checked{% endif %}> hide forks</label>
     <button>Search</button>
   </form>
   <nav><a href="/favorites">★ Favorites</a></nav>
