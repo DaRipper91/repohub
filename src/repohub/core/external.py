@@ -33,6 +33,8 @@ def repo_url(host: str, slug: str) -> str | None:
     spec = registry().get(host)
     if spec is None or len(slug) > 200 or not registry().slug_ok(host, slug):
         return None
+    if any(part.startswith("-") for part in slug.split("/")):  # would look like an option to the other program
+        return None
     return f"{spec.web_base}/{slug}"
 
 

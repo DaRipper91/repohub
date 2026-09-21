@@ -218,3 +218,13 @@ async def test_tui_grab_reports_a_failed_launch_without_crashing(tmp_path, monke
         await pilot.press("y")
         await pilot.pause()
         assert app.is_running  # the error was shown, not raised
+
+
+@pytest.mark.parametrize("slug", ["-h/x", "o/-x", "--out/x", "-/-", "a/b/-c"])
+def test_option_like_segments_never_reach_ghgrab(slug):
+    for host in ("github", "gitlab"):
+        assert repo_url(host, slug) is None and grab_command(host, slug) is None and release_command(host, slug) is None
+
+
+def test_leading_dashes_inside_a_name_are_fine():
+    assert grab_command("github", "o/a-b") == "ghgrab https://github.com/o/a-b"

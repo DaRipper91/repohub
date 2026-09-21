@@ -9,7 +9,7 @@ VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' "$repo/pyproject.toml" | head -1)
 ARCH=$(uname -m)
 # under $HOME: the Flatpak Builder runs in a sandbox that cannot see /tmp
 work=${WORK:-$HOME/.cache/repohub-packaging/flatpak}
-rm -rf "$work"
+case "$work" in "$HOME"/.cache/repohub-packaging/*) rm -rf "$work" ;; *) echo "refusing to delete $work: WORK must be under ~/.cache/repohub-packaging" >&2; exit 1 ;; esac
 mkdir -p "$work" "$repo/packaging/dist"
 
 echo "== wheel"
@@ -17,14 +17,15 @@ python3 -m venv "$work/venv"
 "$work/venv/bin/python" -m pip wheel --no-deps --disable-pip-version-check -q -w "$work" "$repo"
 
 echo "== dependency wheels"
-python3 "$here/gen-sources.py" "$work/python-deps.json" --python 3.13
-GIT_SHA=$(curl -fsSL https://www.kernel.org/pub/software/scm/git/git-2.55.0.tar.xz | sha256sum | cut -d' ' -f1)
+# the dependency list is committed (python-deps.json) so builds are reproducible; REGEN=1 refreshes it
+if [ "${REGEN:-0}" = 1 ]; then python3 "$here/gen-sources.py" "$here/python-deps.json" --python 3.13; fi
+cp "$here/python-deps.json" "$work/python-deps.json"
 # Layout: $work/common (the shared assets) and $work/m (manifest, wheels), so the manifest's ../common resolves.
 cp -r "$repo/packaging/common" "$work/common"
 sed -i -e "s/@VERSION@/$VERSION/" -e "s/@DATE@/$(date -u +%Y-%m-%d)/" "$work/common/io.github.DaRipper91.RepoHub.metainfo.xml"
 mkdir -p "$work/m"
 mv "$work/python-deps.json" "$work"/repohub-*.whl "$work/m/"
-sed -e "s/@VERSION@/$VERSION/g" -e "s/@DATE@/$(date -u +%Y-%m-%d)/g" -e "s/@GIT_SHA256@/$GIT_SHA/" \
+sed -e "s/@VERSION@/$VERSION/g" -e "s/@DATE@/$(date -u +%Y-%m-%d)/g" \
     "$here/io.github.DaRipper91.RepoHub.yml.in" > "$work/m/io.github.DaRipper91.RepoHub.yml"
 
 echo "== flatpak-builder"

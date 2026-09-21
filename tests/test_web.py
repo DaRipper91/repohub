@@ -733,3 +733,42 @@ def test_main_passes_open_and_never_opens_without_the_flag(monkeypatch):
     assert calls["open"] == [] and calls["run"] == [("127.0.0.1", 9911)]
     mod.main(["--port", "9911", "--open"])
     assert calls["open"] == ["http://127.0.0.1:9911/"]
+
+
+def test_browse_url_only_for_addresses_the_app_accepts():
+    from repohub.web.app import browse_url
+
+    assert browse_url("127.0.0.1", 8765) == "http://127.0.0.1:8765/" and browse_url("localhost", 1) == "http://localhost:1/"
+    assert browse_url("0.0.0.0", 9) == "http://127.0.0.1:9/"
+    for host in ("192.168.1.5", "::1", "::", "example.com"):
+        assert browse_url(host, 8765) is None
+
+
+def test_xdg_open_is_the_fallback_when_webbrowser_finds_no_browser():
+    import socket
+
+    from repohub.web.app import open_when_ready
+
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+    port = srv.getsockname()[1]
+    used = []
+    open_when_ready("http://x/", "127.0.0.1", port, opener=lambda u: False, fallback=used.append).join(5)
+    assert used == ["http://x/"]
+    used.clear()
+    open_when_ready("http://x/", "127.0.0.1", port, opener=lambda u: True, fallback=used.append).join(5)
+    assert used == []  # the normal browser worked: no second window
+    srv.close()
+
+
+def test_main_skips_open_for_unreachable_bind_addresses(monkeypatch, capsys):
+    import repohub.web.app as mod
+
+    opened = []
+    monkeypatch.setattr(mod, "open_when_ready", lambda *a, **k: opened.append(a))
+    monkeypatch.setattr("uvicorn.run", lambda *a, **k: None)
+    monkeypatch.setattr("repohub.config.build_hub", lambda: make_hub(FakeProvider("github", [])))
+    monkeypatch.setattr("repohub.config.make_settings", lambda: __import__("repohub.core.settings", fromlist=["Settings"]).Settings())
+    mod.main(["--host", "192.168.1.5", "--open"])
+    assert opened == [] and "--open skipped" in capsys.readouterr().out

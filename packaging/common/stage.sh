@@ -32,8 +32,10 @@ if [ -z "$WHEEL" ]; then  # build with the venv's own pip: the system Python may
     "$venv/bin/python" -m pip wheel --no-deps --disable-pip-version-check -q -w "$tmp/wheel" "$repo"
     WHEEL=$(ls "$tmp"/wheel/repohub-*.whl)
 fi
-# Dependencies must come as ready-made wheels: building needs no compiler, and the result is reproducible.
-"$venv/bin/python" -m pip install --disable-pip-version-check --no-compile --only-binary=:all: -q "$WHEEL"
+# Dependencies come from a hash-locked list (packaging/requirements.lock) and only as ready-made wheels: no compiler,
+# and a tampered or swapped package fails the hash check. Regenerate the list with packaging/lock.sh.
+"$venv/bin/python" -m pip install --disable-pip-version-check --no-compile --only-binary=:all: --require-hashes --no-deps -q -r "$repo/packaging/requirements.lock"
+"$venv/bin/python" -m pip install --disable-pip-version-check --no-compile --no-deps -q "$WHEEL"
 "$venv/bin/python" -m pip uninstall -y -q pip >/dev/null 2>&1 || true
 if "$venv/bin/python" -m pip --version >/dev/null 2>&1; then echo "pip is still present" >&2; exit 1; fi
 
@@ -41,11 +43,11 @@ if "$venv/bin/python" -m pip --version >/dev/null 2>&1; then echo "pip is still 
 find "$venv/bin" -mindepth 1 ! -name 'python*' -delete
 sed -i '/^command = /d' "$venv/pyvenv.cfg"
 find "$venv" -name '__pycache__' -type d -prune -exec rm -rf {} +
-"$venv/bin/python" -m compileall -q -j 0 -s "$DESTDIR" -p "" "$venv/lib" >/dev/null
+"$venv/bin/python" -m compileall -q -j 0 --invalidation-mode checked-hash -s "$DESTDIR" -p "" "$venv/lib" >/dev/null
 
 launcher() {  # name module func
     mkdir -p "$DESTDIR$BIN"
-    printf '#!/bin/sh\nexec %s/venv/bin/python -c '\''from %s import %s; %s()'\'' "$@"\n' "$OPT" "$2" "$3" "$3" > "$DESTDIR$BIN/$1"
+    printf '#!/bin/sh\n# -P: never import from the current directory (it may be an untrusted clone)\nexec %s/venv/bin/python -P -c '\''from %s import %s; %s()'\'' "$@"\n' "$OPT" "$2" "$3" "$3" > "$DESTDIR$BIN/$1"
     chmod 755 "$DESTDIR$BIN/$1"
 }
 launcher repohub repohub.cli run

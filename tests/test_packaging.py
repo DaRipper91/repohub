@@ -155,9 +155,17 @@ def test_picker_never_chooses_free_threaded_wheels():
 
 def test_flatpak_manifest_is_offline_for_python_and_pins_git():
     text = (PKG / "flatpak" / f"{APP_ID}.yml.in").read_text()
-    assert "python-deps.json" in text and "--no-index" in text and "@GIT_SHA256@" in text and "NO_RUST=1" in text
-    assert "--share=network" in text and "--filesystem=home:ro" in text
-    assert "--filesystem=home\n" not in text and "--filesystem=host" not in text  # never write access to all of home
+    assert "python-deps.json" in text and "--no-index" in text and "NO_RUST=1" in text
+    # the git source is pinned by a real sha256 (equal to kernel.org's published sums), not computed at build time
+    assert "sha256: 457fdb04dc8728e007d4688695e6912e6f680727920f2a40bf11eacc17505357" in text and "@GIT_SHA256@" not in text
+    assert "git-2.55.0.tar.xz" in text and "--share=network" in text
+
+
+def test_flatpak_does_not_expose_the_home_folder():
+    text = (PKG / "flatpak" / f"{APP_ID}.yml.in").read_text()
+    grants = re.findall(r"^\s*- --filesystem=(\S+)", text, re.M)
+    assert grants == ["~/playground:create"], grants  # only the clone folder; nothing like home, host or ~/.ssh
+    assert "--filesystem=home" not in text and "--filesystem=host" not in text
 
 
 # ---------------------------------------------------------------- the install script must never touch user data
@@ -222,3 +230,124 @@ def test_dry_run_changes_nothing_and_bad_options_are_refused(tmp_path):
     assert r.returncode == 0 and "dry run: nothing was changed" in r.stdout and list(tmp_path.iterdir()) == []
     bad = run_install(tmp_path, "--frobnicate")
     assert bad.returncode == 2 and "unknown option" in bad.stderr
+
+
+# ---------------------------------------------------------------- review follow-ups
+
+def test_every_launcher_ignores_the_current_directory():
+    """`python -c` puts the cwd first on sys.path: a cloned repository could shadow a real module. -P prevents it."""
+    stage = (COMMON / "stage.sh").read_text()
+    assert "venv/bin/python -P -c" in stage
+    assert "exec python3 -P -c" in (PKG / "flatpak" / f"{APP_ID}.yml.in").read_text()
+    apprun = (PKG / "appimage" / "AppRun").read_text()
+    assert apprun.count('exec "$PY" -P -c') == 4 and 'exec "$PY" -c' not in apprun
+
+
+def test_the_launcher_command_really_ignores_a_shadowing_module(tmp_path):
+    import sys
+
+    (tmp_path / "json.py").write_text("print('PWNED via cwd')\nraise SystemExit(0)\n")
+    code = "import json; print(json.__file__)"
+    safe = subprocess.run([sys.executable, "-P", "-c", code], cwd=tmp_path, capture_output=True, text=True)
+    assert "PWNED" not in safe.stdout and str(tmp_path) not in safe.stdout and safe.returncode == 0
+    unsafe = subprocess.run([sys.executable, "-c", code], cwd=tmp_path, capture_output=True, text=True)
+    assert "PWNED" in unsafe.stdout  # without -P the attack works, so this test would notice a regression
+
+
+def test_appimage_does_not_put_its_python_on_path():
+    apprun = (PKG / "appimage" / "AppRun").read_text()
+    assert not re.search(r'^\s*export PATH=', apprun, re.M)
+
+
+def test_appimage_downloads_are_pinned_and_verified():
+    pins = (PKG / "appimage" / "pins.sh").read_text()
+    for key in ("PBS_SHA256_aarch64", "PBS_SHA256_x86_64", "APPIMAGETOOL_SHA256_aarch64", "APPIMAGETOOL_SHA256_x86_64"):
+        assert re.search(rf"^{key}=[0-9a-f]{{64}}\b", pins, re.M), key
+    assert re.search(r"^PBS_TAG=\d{8}", pins, re.M) and re.search(r"^APPIMAGETOOL_VERSION=\d", pins, re.M)
+    build = (PKG / "appimage" / "build.sh").read_text()
+    assert "sha256sum -c" in build and build.count("checksum mismatch") == 2
+    assert "continuous" not in build and "releases/latest" not in build
+
+
+def test_dependencies_are_hash_locked_and_installed_with_require_hashes():
+    lock = (PKG / "requirements.lock").read_text()
+    pins = re.findall(r"^([A-Za-z0-9_.-]+)==", lock, re.M)
+    assert len(pins) >= 25
+    blocks = re.split(r"^(?=[A-Za-z0-9_.-]+==)", lock, flags=re.M)[1:]
+    assert all("--hash=sha256:" in b for b in blocks), "every pinned package needs hashes"
+    for script in (COMMON / "stage.sh", PKG / "appimage" / "build.sh"):
+        assert "--require-hashes" in script.read_text() and "requirements.lock" in script.read_text()
+
+
+def test_flatpak_dependency_list_is_committed_and_agrees_with_the_lock():
+    import json
+
+    deps = json.loads((PKG / "flatpak" / "python-deps.json").read_text())
+    lock = (PKG / "requirements.lock").read_text().lower().replace("_", "-")
+    names = set()
+    for src in deps["sources"]:
+        base = src["url"].rsplit("/", 1)[1].split("-")
+        name, version = base[0].lower().replace("_", "-"), base[1]
+        names.add(name)
+        assert f"{name}=={version}" in lock, f"{name} {version} is not in requirements.lock"
+        assert re.fullmatch(r"[0-9a-f]{64}", src["sha256"])
+    assert len(names) >= 25
+    assert "REGEN" in (PKG / "flatpak" / "build.sh").read_text()
+
+
+def test_flatpak_build_refuses_to_delete_outside_its_cache():
+    text = (PKG / "flatpak" / "build.sh").read_text()
+    assert 'case "$work" in "$HOME"/.cache/repohub-packaging/*)' in text and "refusing to delete" in text
+
+
+def test_workflow_has_least_privilege_permissions():
+    assert re.search(r"^permissions:\s*\n\s+contents: read", (ROOT / ".github/workflows/packages.yml").read_text(), re.M)
+
+
+def test_systemd_unit_has_the_hardening_it_claims():
+    unit = (COMMON / "repohub-web.service").read_text()
+    for line in ("NoNewPrivileges=yes", "PrivateTmp=yes", "LockPersonality=yes", "RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6",
+                 "SystemCallArchitectures=native"):
+        assert line in unit
+
+
+# ---- install.sh: only remove what it installed, refuse unsafe input
+
+def test_uninstall_keeps_links_and_units_it_did_not_create(tmp_path):
+    fake_install(tmp_path)
+    foreign = tmp_path / "pipx-repohub"
+    foreign.write_text("#!/bin/sh")
+    link = tmp_path / ".local/bin/repohub"
+    link.unlink()
+    link.symlink_to(foreign)  # e.g. a pipx or editable install that owns this name
+    unit_dir = tmp_path / ".config/systemd/user"
+    unit_dir.mkdir(parents=True)
+    (unit_dir / "repohub-web.service").write_text("[Service]\nExecStart=/somewhere/else/repohub-web\n")
+    r = run_install(tmp_path, "--uninstall")
+    assert r.returncode == 0, r.stderr
+    assert link.is_symlink() and link.resolve() == foreign.resolve() and "not installed by this script" in r.stdout
+    assert (unit_dir / "repohub-web.service").exists()  # not ours: ExecStart points elsewhere
+    assert not (tmp_path / ".local/bin/repohub-web").is_symlink()  # ours: removed
+
+
+@pytest.mark.parametrize("prefix", ["relative/dir", "/tmp/with space", "/tmp/a|b", "/tmp/a&b", "/tmp/a$b", "/tmp/a%b", "/", ""])
+def test_unsafe_prefixes_are_refused(tmp_path, prefix):
+    r = run_install(tmp_path, "--dry-run", "--prefix", prefix)
+    assert r.returncode != 0 and list(tmp_path.iterdir()) == []
+
+
+def test_from_cannot_be_an_option_for_pip(tmp_path):
+    r = run_install(tmp_path, "--dry-run", "--from", "--index-url=https://evil.example/simple")
+    assert r.returncode == 2 and "not an option" in r.stderr
+
+
+def test_a_plain_prefix_is_accepted_and_used(tmp_path):
+    r = run_install(tmp_path, "--dry-run", "--prefix", str(tmp_path / "opt-home"))
+    assert r.returncode == 0 and str(tmp_path / "opt-home" / "share" / "repohub-app") in r.stdout
+
+
+def test_purge_dry_run_does_not_claim_data_was_deleted(tmp_path):
+    fake_install(tmp_path)
+    r = run_install(tmp_path, "--uninstall", "--purge", "--dry-run")
+    assert "would be deleted" in r.stdout and "were deleted" not in r.stdout
+    assert (tmp_path / ".local/share/repohub/repohub.db").exists()

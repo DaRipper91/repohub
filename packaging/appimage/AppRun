@@ -4,7 +4,7 @@
 #   RepoHub.AppImage web|tui|cli|mcp [args]
 #   a symlink named repohub-tui / repohub-mcp / repohub / repohub-web to the AppImage picks that mode
 HERE=$(dirname "$(readlink -f "$0")")
-export PATH="$HERE/opt/python/bin:$PATH"
+# the bundled Python is reached only through $PY: it must not shadow the host's tools (guided installs run them)
 export PYTHONNOUSERSITE=1
 export PYTHONDONTWRITEBYTECODE=1
 PY="$HERE/opt/python/bin/python3"
@@ -21,8 +21,8 @@ case "${1:-}" in
 esac
 
 case "$mode" in
-    web) [ $# -eq 0 ] && set -- --open; exec "$PY" -c 'from repohub.web.app import main; main()' "$@" ;;
-    tui) exec "$PY" -c 'from repohub.tui.app import main; main()' "$@" ;;
-    mcp) exec "$PY" -c 'from repohub.mcp import main; main()' "$@" ;;
-    cli) exec "$PY" -c 'from repohub.cli import run; run()' "$@" ;;
+    web) [ $# -eq 0 ] && set -- --open; exec "$PY" -P -c 'from repohub.web.app import main; main()' "$@" ;;
+    tui) exec "$PY" -P -c 'from repohub.tui.app import main; main()' "$@" ;;
+    mcp) exec "$PY" -P -c 'from repohub.mcp import main; main()' "$@" ;;
+    cli) exec "$PY" -P -c 'from repohub.cli import run; run()' "$@" ;;
 esac

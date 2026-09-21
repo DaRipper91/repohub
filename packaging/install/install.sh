@@ -24,7 +24,8 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --service) service=1 ;;
         --no-desktop) desktop=0 ;;
-        --from) source_spec=${2:?--from needs a value}; shift ;;
+        --from) source_spec=${2:?--from needs a value}; shift
+                case "$source_spec" in -*) echo "--from takes a folder, a wheel file or a package name, not an option" >&2; exit 2 ;; esac ;;
         --prefix) prefix=${2:?--prefix needs a folder}; shift ;;
         --uninstall) uninstall=1 ;;
         --purge) purge=1 ;;
@@ -35,6 +36,14 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+case "$prefix" in
+    /*) ;;
+    *) echo "--prefix must be an absolute folder" >&2; exit 2 ;;
+esac
+case "$prefix" in  # the paths end up in desktop entries, a systemd unit and sed commands: keep them plain
+    *[!A-Za-z0-9_./+-]*) echo "--prefix may only contain letters, digits and _ . / + -" >&2; exit 2 ;;
+esac
+[ "$prefix" != / ] || { echo "refusing --prefix /" >&2; exit 2; }
 bin=$prefix/bin
 share=$prefix/share
 app=$share/repohub-app  # NOT $share/repohub: that is where RepoHub keeps your favorites and settings
@@ -50,20 +59,28 @@ have_systemd_user() { command -v systemctl >/dev/null 2>&1 && systemctl --user s
 
 if [ "$uninstall" = 1 ]; then
     say "Removing RepoHub from $prefix"
-    if have_systemd_user && [ -f "$unitdir/repohub-web.service" ]; then
-        run systemctl --user disable --now repohub-web.service || true
-    fi
-    for f in "$unitdir/repohub-web.service" "$bin/repohub" "$bin/repohub-web" "$bin/repohub-tui" "$bin/repohub-mcp" \
-             "$apps/$id.desktop" "$apps/$id.Tui.desktop" "$icons/$id.svg"; do
-        [ -e "$f" ] || [ -L "$f" ] && run rm -f "$f"
+    for tool in repohub repohub-web repohub-tui repohub-mcp; do  # only links that point into our own environment
+        link=$bin/$tool
+        if [ -L "$link" ] && case "$(readlink "$link")" in "$venv"/*) true ;; *) false ;; esac; then
+            run rm -f "$link"
+        elif [ -e "$link" ] || [ -L "$link" ]; then
+            say "  kept $link: it was not installed by this script"
+        fi
     done
+    for f in "$apps/$id.desktop" "$apps/$id.Tui.desktop" "$icons/$id.svg"; do
+        [ -e "$f" ] && run rm -f "$f"
+    done
+    if [ -f "$unitdir/repohub-web.service" ] && grep -qF "ExecStart=$bin/repohub-web" "$unitdir/repohub-web.service"; then
+        have_systemd_user && run systemctl --user disable --now repohub-web.service || true
+        run rm -f "$unitdir/repohub-web.service"
+    fi
     [ -d "$app" ] && run rm -rf "$app"
     have_systemd_user && run systemctl --user daemon-reload || true
     if [ "$purge" = 1 ]; then
         for d in "${XDG_DATA_HOME:-$HOME/.local/share}/repohub" "${XDG_CONFIG_HOME:-$HOME/.config}/repohub" "${XDG_CACHE_HOME:-$HOME/.cache}/repohub"; do
             [ -d "$d" ] && run rm -rf "$d"
         done
-        say "Your RepoHub data and settings were deleted."
+        [ "$dry" = 1 ] && say "(dry run) Your RepoHub data and settings would be deleted." || say "Your RepoHub data and settings were deleted."
     else
         say "Your favorites, notes and settings were kept (use --purge to delete them)."
     fi
@@ -83,8 +100,11 @@ say "Installing RepoHub with $("$py" --version 2>&1) into $app"
 
 run mkdir -p "$bin" "$app"
 run "$py" -m venv "$venv"
-run "$venv/bin/python" -m pip install --disable-pip-version-check -q --upgrade "$source_spec"
+run "$venv/bin/python" -m pip install --disable-pip-version-check -q --upgrade -- "$source_spec"
 for tool in repohub repohub-web repohub-tui repohub-mcp; do
+    if [ -e "$bin/$tool" ] && ! { [ -L "$bin/$tool" ] && case "$(readlink "$bin/$tool")" in "$venv"/*) true ;; *) false ;; esac; }; then
+        say "  note: replacing the existing $bin/$tool"
+    fi
     run ln -sf "$venv/bin/$tool" "$bin/$tool"
 done
 

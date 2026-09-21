@@ -1,4 +1,4 @@
-# Flatpak manifest template: build.sh fills in @VERSION@ and @GIT_SHA256@ and generates python-deps.json.
+# Flatpak manifest template: build.sh fills in @VERSION@ and @DATE@. Dependencies come from the committed python-deps.json.
 app-id: io.github.DaRipper91.RepoHub
 runtime: org.freedesktop.Platform
 runtime-version: '25.08'
@@ -8,8 +8,9 @@ command: repohub-web
 finish-args:
   # Talks to GitHub, GitLab, Codeberg and any hosts you configure.
   - --share=network
-  # Reads your home folder (read-only) to find existing clones and their .git/config; only the clone folder is writable.
-  - --filesystem=home:ro
+  # Only the clone folder is visible and writable. Your home folder (with ~/.ssh, ~/.gnupg, browser profiles) is NOT
+  # exposed. To let RepoHub see clones elsewhere, add folders yourself, for example:
+  #   flatpak override --user --filesystem=~/Projects:ro io.github.DaRipper91.RepoHub
   - --filesystem=~/playground:create
   # Sign-in: the gh CLI is not in the sandbox. Give RepoHub a token with:
   #   flatpak override --user --env=GITHUB_TOKEN="$(gh auth token)" io.github.DaRipper91.RepoHub
@@ -29,7 +30,7 @@ modules:
     sources:
       - type: archive
         url: https://www.kernel.org/pub/software/scm/git/git-2.55.0.tar.xz
-        sha256: @GIT_SHA256@
+        sha256: 457fdb04dc8728e007d4688695e6912e6f680727920f2a40bf11eacc17505357
 
   - python-deps.json
 
@@ -40,7 +41,7 @@ modules:
       - |
         for spec in repohub:repohub.cli:run repohub-web:repohub.web.app:main repohub-tui:repohub.tui.app:main repohub-mcp:repohub.mcp:main; do
           name=${spec%%:*}; rest=${spec#*:}; mod=${rest%%:*}; fn=${rest#*:}
-          printf '#!/bin/sh\nexport PYTHONPATH=/app/lib/python3.13/site-packages${PYTHONPATH:+:$PYTHONPATH}\nexec python3 -c "from %s import %s; %s()" "$@"\n' "$mod" "$fn" "$fn" > /app/bin/$name
+          printf '#!/bin/sh\nexport PYTHONPATH=/app/lib/python3.13/site-packages${PYTHONPATH:+:$PYTHONPATH}\nexec python3 -P -c "from %s import %s; %s()" "$@"\n' "$mod" "$fn" "$fn" > /app/bin/$name
           chmod 755 /app/bin/$name
         done
       - install -Dm644 common/io.github.DaRipper91.RepoHub.desktop /app/share/applications/io.github.DaRipper91.RepoHub.desktop

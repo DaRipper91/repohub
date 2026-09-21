@@ -504,13 +504,35 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
     return app
 
 
-def open_when_ready(url: str, host: str, port: int, opener=None, tries: int = 60) -> threading.Thread:
-    """Open ``url`` in the default browser as soon as the server accepts connections (gives up after ~15 s)."""
+def browse_url(host: str, port: int) -> str | None:
+    """Where a browser on this machine can reach the app, or None when the bind address is not reachable that way.
+
+    The app only answers requests addressed to 127.0.0.1 or localhost (a Host-header check), so a specific LAN or IPv6
+    address gets no automatic browser.
+    """
+    if host in ("127.0.0.1", "localhost", "0.0.0.0"):
+        return f"http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}/"
+    return None
+
+
+def open_when_ready(url: str, host: str, port: int, opener=None, tries: int = 60, fallback=None) -> threading.Thread:
+    """Open ``url`` in the default browser as soon as the server accepts connections (gives up after ~15 s).
+
+    If Python's ``webbrowser`` finds no browser (for example inside a sandbox with no display socket), ``xdg-open`` is tried.
+    """
+    import shutil
     import socket
+    import subprocess
     import time
     import webbrowser
 
     opener = opener or webbrowser.open
+
+    def xdg(u: str) -> bool:
+        exe = shutil.which("xdg-open")
+        return bool(exe) and subprocess.run([exe, u], timeout=20, capture_output=True).returncode == 0
+
+    fallback = fallback or xdg
 
     def wait_and_open() -> None:
         probe = "127.0.0.1" if host in ("0.0.0.0", "::", "localhost") else host
@@ -523,7 +545,8 @@ def open_when_ready(url: str, host: str, port: int, opener=None, tries: int = 60
         else:
             return
         try:
-            opener(url)
+            if opener(url) is False:
+                fallback(url)
         except Exception:
             pass  # no browser available: the URL is still printed by the server
 
@@ -549,5 +572,9 @@ def main(argv: list[str] | None = None) -> None:
     aware = Awareness(clone_root(), extra_roots=roots.list)
     app = create_app(hub, clone_root(), roots=roots, awareness=aware, runner=Runner(aware, make_settings(), hub.actions))
     if args.open:
-        open_when_ready(f"http://{'127.0.0.1' if args.host in ('0.0.0.0', '::') else args.host}:{args.port}/", args.host, args.port)
+        url = browse_url(args.host, args.port)
+        if url:
+            open_when_ready(url, args.host, args.port)
+        else:
+            print(f"--open skipped: browse to http://127.0.0.1:{args.port}/ ({args.host} is not reachable that way)")
     uvicorn.run(app, host=args.host, port=args.port)
