@@ -338,3 +338,66 @@ async def test_late_favorites_refresh_does_not_overwrite_other_view(tmp_path):
         await pilot.pause()
         assert app.view == "shelves"
         assert [c.label.plain for c in app.query_one(DataTable).columns.values()] == ["Shelf", "Topic"]
+
+
+# ---- query syntax ----------------------------------------------------------------------------
+
+def make_gh_app(tmp_path):
+    gh = FakeProvider("github", [mk("github", "o/r", 50), mk("github", "p/q", 5)])
+    return RepoHubApp(make_hub(gh), tmp_path, shelves=[Shelf("T", topic="tui")]), gh
+
+
+async def type_query(app, pilot, query):
+    app.query_one(Input).value = ""
+    app.query_one(Input).focus()
+    await pilot.press(*query, "enter")
+    await settle(app, pilot)
+
+
+async def test_query_syntax_reaches_provider(tmp_path):
+    app, gh = make_gh_app(tmp_path)
+    async with app.run_test() as pilot:
+        await type_query(app, pilot, "tui lang:rust nofork sort:forks")
+        assert gh.last_query == "tui"
+        assert gh.last_filters.language == "rust"
+        assert gh.last_filters.hide_forks
+        assert gh.last_filters.sort == "forks"
+        assert "tui lang:rust nofork sort:forks" in text_of(app.query_one("#status", Static))
+
+
+async def test_bad_token_reports_ignored_but_still_searches(tmp_path):
+    app, gh = make_gh_app(tmp_path)
+    async with app.run_test() as pilot:
+        await type_query(app, pilot, "tui stars:abc")
+        assert app.query_one(DataTable).row_count == 2
+        status = text_of(app.query_one("#status", Static))
+        assert "Ignored: " in status and "stars" in status
+
+
+async def test_syntax_only_query_still_runs(tmp_path):
+    app, gh = make_gh_app(tmp_path)
+    async with app.run_test() as pilot:
+        await type_query(app, pilot, "nofork")
+        assert gh.calls == 1 and gh.last_query == "" and gh.last_filters.hide_forks
+        assert app.query_one(DataTable).row_count == 2
+
+
+async def test_placeholder_documents_syntax(tmp_path):
+    app, _ = make_gh_app(tmp_path)
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert app.query_one(Input).placeholder == (
+            "Search GitHub and GitLab (e.g. tui lang:rust stars:500 days:90 host:github sort:updated nofork)")
+
+
+async def test_hostile_problem_text_is_shown_literally(tmp_path):
+    app, gh = make_gh_app(tmp_path)
+    async with app.run_test() as pilot:
+        for q in ("stars:[/]", "lang:[@click=app.quit]x[/]"):
+            await type_query(app, pilot, q)
+            status = text_of(app.query_one("#status", Static))
+            assert app.is_running
+            assert "Ignored" in status
+            assert f"Results for '{q}'" in status
+        assert "[@click=app.quit]" in status and "[/]" in status
+        assert app.query_one(DataTable).row_count == 2

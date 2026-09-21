@@ -12,6 +12,7 @@ from textual.widgets import DataTable, Footer, Header, Input, Markdown, Static
 from repohub.core.browse import load_shelves
 from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_clone
 from repohub.core.providers.base import ProviderError
+from repohub.core.queryparse import parse_query
 
 
 class ConfirmClone(ModalScreen[bool]):
@@ -134,7 +135,7 @@ class RepoHubApp(App):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield Input(placeholder="Search GitHub and GitLab, then press Enter", id="q")
+        yield Input(placeholder="Search GitHub and GitLab (e.g. tui lang:rust stars:500 days:90 host:github sort:updated nofork)", id="q")
         yield Static("", id="status", markup=False)
         yield DataTable(cursor_type="row")
         yield Footer()
@@ -207,12 +208,16 @@ class RepoHubApp(App):
 
     async def _search(self, query: str) -> None:
         try:
-            result = await self.hub.search(query)
+            parsed = parse_query(query)
+            result = await self.hub.search(parsed.text, parsed.filters)
         except Exception as e:
             self._status(f"Search failed: {e}")
             self.notify(f"Search failed: {e}", severity="error")
             return
-        self._show_result(result, f"Results for '{query}'")
+        label = f"Results for '{query}'"
+        if parsed.problems:
+            label += "  Ignored: " + "; ".join(parsed.problems)  # plain-text status Static, never markup
+        self._show_result(result, label)
 
     async def _open_shelf(self, index: int) -> None:
         shelf = self.shelves[index]
