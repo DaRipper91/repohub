@@ -167,6 +167,12 @@ class DetailScreen(Screen):
         star = "★ favorited" if self.hub.favorites.is_favorite(r.key) else ""
         lines = [f"{r.slug} [{r.host}]  ★ {r.stars}  {r.language or 'n/a'}  {r.license or 'no license'}  {star}",
                  r.description, f"Release: {release}"]
+        favs = self.hub.favorites
+        if favs.is_favorite(r.key):
+            extra = [f"Tags: {', '.join(favs.tags(r.key))}" if favs.tags(r.key) else "",
+                     f"Collections: {', '.join(favs.collections_by_key().get(r.key, []))}" if favs.collections_by_key().get(r.key) else "",
+                     f"Note: {favs.note(r.key)}" if favs.note(r.key) else ""]
+            lines += [x for x in extra if x]
         aware = getattr(self.app, "awareness", None)
         if aware is not None:
             v = aware.check(r, rel)
@@ -295,7 +301,8 @@ class RepoHubApp(App):
     TITLE = "RepoHub"
     BINDINGS = [Binding("ctrl+f", "favorites", "Favorites"), Binding("escape", "home", "Shelves"),
                 Binding("]", "next_page", "Next page"), Binding("[", "prev_page", "Prev page"),
-                Binding("d", "remove_favorite", "Remove favorite"), Binding("f2", "accounts", "Accounts"), Binding("f3", "history", "History on/off"),
+                Binding("d", "remove_favorite", "Remove favorite"), Binding("r", "releases", "New releases", show=False),
+                Binding("m", "mark_seen", "Mark seen", show=False), Binding("f2", "accounts", "Accounts"), Binding("f3", "history", "History on/off"),
                 Binding("f4", "clear_history", "Clear history"), Binding("f5", "folders", "Folders"), Binding("f6", "guided", "Guided install on/off"),
                 Binding("s", "scan_home", "Scan home", show=False), Binding("w", "scan_system", "Scan all", show=False), Binding("a", "accounts", "Accounts", show=False)]
 
@@ -360,6 +367,8 @@ class RepoHubApp(App):
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
         if action in ("clear_history", "history", "folders", "guided") and len(self.screen_stack) > 1:
             return False
+        if action in ("releases", "mark_seen"):  # only in the favorites / releases views of the main screen
+            return self.view in ("favorites", "releases") and len(self.screen_stack) == 1
         if action in ("scan_home", "scan_system"):  # only on the folders view of the main screen
             return self.view == "folders" and len(self.screen_stack) == 1
         if action == "accounts" and len(self.screen_stack) > 1:  # not from the detail or confirm screens
@@ -435,6 +444,37 @@ class RepoHubApp(App):
 
         self.push_screen(ConfirmWrite("Turn on guided install?\nRepoHub will propose standard build commands for cloned "
                                       "repositories and run one only after you approve it.\n" + WARNING), done)
+
+    def action_releases(self) -> None:
+        self._status("Checking your favorites for new releases…")
+        self.run_worker(self._show_releases(), exclusive=True)
+
+    async def _show_releases(self) -> None:
+        try:
+            errors = await self.hub.check_releases()
+        except Exception as e:
+            self.notify(f"Could not check releases: {e}", severity="error", markup=False)
+            return
+        self.view = "releases"
+        self.refresh_bindings()
+        t = self._table()
+        t.clear(columns=True)
+        t.add_columns("Repo", "Host", "Release", "Published")
+        for r, tag, published in self.hub.favorites.new_releases():
+            t.add_row(Text(r.slug), Text(r.host), Text(tag), Text(published[:10]), key=f"repo:{r.host}:{r.slug}")
+        notes = ["New releases in your favorites. m marks one as seen; Esc goes back."]
+        notes += [f"{h}: {m}" for h, m in errors.items()]
+        self._status("  ".join(notes))
+
+    def action_mark_seen(self) -> None:
+        if self.view != "releases":
+            return
+        key = self._folder_key()  # the highlighted row's key
+        if key.startswith("repo:"):
+            _, host, slug = key.split(":", 2)
+            self.hub.favorites.mark_release_seen(f"{host}:{slug.lower()}")
+            self.notify("Marked as seen", markup=False)
+            self.run_worker(self._show_releases(), exclusive=True)
 
     def action_history(self) -> None:
         on = not self.hub.history.enabled

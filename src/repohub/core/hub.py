@@ -27,6 +27,8 @@ PARTIAL_TTL = 60
 ACCOUNT_TTL = 300
 STARRED_TTL = 60
 RECOMMEND_TTL = 3600
+RELEASE_CHECK_TTL = 1800
+MAX_RELEASE_CHECKS = 100
 MIN_LIMIT_WAIT = 60
 MAX_LIMIT_WAIT = 3600
 REFRESH_CONCURRENCY = 8
@@ -104,6 +106,7 @@ class Hub:
         self.actions = actions if actions is not None else ActionLog()
         self.history = history if history is not None else History()
         self._starred_repos: dict[str, tuple[float, list[Repo]]] = {}  # per host, in memory only
+        self._releases_checked: float | None = None
         self._rec_memo: dict[str, tuple[float, object]] = {}  # in memory only
         self._clock = clock
         self._starred: dict[str, tuple[float, bool]] = {}  # in memory only
@@ -495,3 +498,44 @@ class Hub:
         if not errors:
             self._rec_memo[key] = (self._clock() + RECOMMEND_TTL, items)
         return RecResult(items[:limit], errors)
+
+    # ------------------------------------------------------------ favorites: new releases
+
+    async def check_releases(self, force: bool = False) -> dict[str, str]:
+        """Look up the latest release of each favorite (at most 100, at most every 30 minutes).
+
+        Returns per-host errors. Hosts in their rate-limit pause are skipped. Nothing is ever written to a host.
+        """
+        now = self._clock()
+        if not force and self._releases_checked is not None and now - self._releases_checked < RELEASE_CHECK_TTL:
+            return {}
+        self._releases_checked = now
+        errors: dict[str, str] = {}
+        sem = asyncio.Semaphore(REFRESH_CONCURRENCY)
+
+        async def one(repo: Repo) -> None:
+            provider = self.providers.get(repo.host)
+            if provider is None or repo.host in errors:
+                return
+            limited = self._limit_message(repo.host)
+            if limited is not None:
+                errors[repo.host] = limited
+                return
+            try:
+                async with sem:
+                    release = await with_deadline(repo.host, provider.latest_release(repo.slug))
+            except RateLimited as e:
+                self._note_rate_limit(repo.host, e)
+                errors[repo.host] = str(e)
+                return
+            except ProviderError as e:
+                errors.setdefault(repo.host, str(e))
+                return
+            except Exception:
+                errors.setdefault(repo.host, "unexpected error")
+                return
+            if release is not None:
+                self.favorites.record_release(repo.key, release.tag, release.published_at)
+
+        await asyncio.gather(*(one(r) for r in self.favorites.list()[:MAX_RELEASE_CHECKS]))
+        return errors

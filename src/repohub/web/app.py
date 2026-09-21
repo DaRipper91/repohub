@@ -327,12 +327,72 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
                     history_on=hub.history.enabled, history_count=len(hub.history.list()))
 
     @app.get("/favorites", response_class=HTMLResponse)
-    async def favorites_page(request: Request):
+    async def favorites_page(request: Request, tag: str = "", collection: str = "", q: str = ""):
         if not refresh_tasks:  # one background refresh at a time; the page never waits for the network
             task = asyncio.create_task(hub.refresh_favorites())
             refresh_tasks.add(task)
             task.add_done_callback(_refresh_done(refresh_tasks))
-        return page(request, "favorites.html", repos=hub.favorites.list(), registered=registry().ids)
+        favs = hub.favorites
+        tag = favs.clean_tag(tag)
+        return page(request, "favorites.html", repos=favs.list(tag=tag or None, collection=collection[:40] or None, q=q[:100]),
+                    registered=registry().ids, notes=favs.notes(), tags=favs.tags_by_key(), memberships=favs.collections_by_key(),
+                    all_tags=favs.all_tags(), collections=favs.collections(), f_tag=tag, f_collection=collection[:40], f_q=q[:100],
+                    new_count=len(favs.new_releases()))
+
+    def fav_key(host: str, slug: str) -> str:
+        if len(slug) > 200 or not hub.favorites.is_favorite(f"{host}:{slug.lower()}"):
+            raise HTTPException(404, "not found")
+        return f"{host}:{slug.lower()}"
+
+    @app.post("/favorites/note")
+    async def favorite_note(host: str = Form(...), slug: str = Form(...), note: str = Form(""),
+                            token_field: str = Form("", alias="token")):
+        require_token(token_field)
+        hub.favorites.set_note(fav_key(host, slug), note)
+        return RedirectResponse("/favorites", status_code=303)
+
+    @app.post("/favorites/tag")
+    async def favorite_tag(host: str = Form(...), slug: str = Form(...), tag: str = Form(...), action: str = Form("add"),
+                           token_field: str = Form("", alias="token")):
+        require_token(token_field)
+        key = fav_key(host, slug)
+        if action == "add":
+            hub.favorites.add_tag(key, tag)
+        elif action == "remove":
+            hub.favorites.remove_tag(key, tag)
+        else:
+            raise HTTPException(404, "not found")
+        return RedirectResponse("/favorites", status_code=303)
+
+    @app.post("/favorites/collection")
+    async def favorite_collection(action: str = Form(...), name: str = Form(""), host: str = Form(""), slug: str = Form(""),
+                                  token_field: str = Form("", alias="token")):
+        require_token(token_field)
+        favs = hub.favorites
+        if action == "create":
+            favs.create_collection(name)
+        elif action == "delete":
+            favs.delete_collection(name[:40])
+        elif action in ("add", "remove"):
+            key = fav_key(host, slug)
+            (favs.add_to_collection if action == "add" else favs.remove_from_collection)(name[:40], key)
+        else:
+            raise HTTPException(404, "not found")
+        return RedirectResponse("/favorites", status_code=303)
+
+    @app.get("/favorites/releases", response_class=HTMLResponse)
+    async def favorites_releases(request: Request):
+        errors = await hub.check_releases()
+        return page(request, "releases.html", items=hub.favorites.new_releases(), errors=errors)
+
+    @app.post("/favorites/seen")
+    async def favorites_seen(host: str = Form(""), slug: str = Form(""), token_field: str = Form("", alias="token")):
+        require_token(token_field)
+        if host or slug:
+            hub.favorites.mark_release_seen(fav_key(host, slug))
+        else:
+            hub.favorites.mark_release_seen()
+        return RedirectResponse("/favorites/releases", status_code=303)
 
     @app.post("/favorite", response_class=HTMLResponse)
     async def toggle_favorite(request: Request, host: str = Form(...), slug: str = Form(...), token_field: str = Form("", alias="token")):

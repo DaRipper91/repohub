@@ -1,11 +1,41 @@
 {% extends "base.html" %}
+{% block title %}Favorites · RepoHub{% endblock %}
 {% block body %}<h2>Favorites</h2>
-<p class="dim">Stats refresh in the background; reload to see updates.</p>
+<p class="dim">Stats refresh in the background; reload to see updates. Tags, notes and collections are kept on this machine only.
+  <a href="/favorites/releases">New releases{% if new_count %} ({{ new_count }}){% endif %}</a></p>
+<form method="get" action="/favorites" class="inline">
+  <input name="q" value="{{ f_q }}" placeholder="Search favorites and notes" aria-label="Search favorites">
+  <select name="tag" aria-label="Tag"><option value="">any tag</option>{% for t, n in all_tags %}<option value="{{ t }}" {% if f_tag == t %}selected{% endif %}>{{ t }} ({{ n }})</option>{% endfor %}</select>
+  <select name="collection" aria-label="Collection"><option value="">any collection</option>{% for c, n in collections %}<option value="{{ c }}" {% if f_collection == c %}selected{% endif %}>{{ c }} ({{ n }})</option>{% endfor %}</select>
+  <button>Filter</button>
+</form>
+<details><summary>Collections</summary>
+  <ul>{% for c, n in collections %}<li>{{ c }} ({{ n }})
+    <form method="post" action="/favorites/collection" class="inline" hx-boost="true" hx-confirm="Delete this collection? The repositories stay in your favorites.">
+      <input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="name" value="{{ c }}"><button name="action" value="delete">Delete</button></form></li>
+  {% else %}<li class="dim">None yet.</li>{% endfor %}</ul>
+  <form method="post" action="/favorites/collection" class="inline"><input type="hidden" name="token" value="{{ token }}">
+    <input name="name" placeholder="New collection" maxlength="40" aria-label="New collection name"><button name="action" value="create">Create</button></form>
+</details>
 <div class="grid">
 {% for r in repos %}
 {% if r.host in registered %}
-  <a class="card" href="/repo/{{ r.host }}/{{ r.slug }}"><div class="name">{{ r.slug }} <span class="badge host-{{ r.host }}">{{ r.host }}</span> {% if r.key in cloned %}<span class="badge ok" title="Found in your clone folder">cloned</span>{% endif %}</div>
+  <div class="card"><a href="/repo/{{ r.host }}/{{ r.slug }}"><div class="name">{{ r.slug }} <span class="badge host-{{ r.host }}">{{ r.host }}</span> {% if r.key in cloned %}<span class="badge ok" title="Found in your clone folder">cloned</span>{% endif %}</div>
   <p>{{ r.description }}</p><div class="meta">★ {{ r.stars }} · {{ r.language or "n/a" }}</div></a>
+  <p>{% for t in tags.get(r.key, []) %}<span class="tag">{{ t }}</span> {% endfor %}{% for c in memberships.get(r.key, []) %}<span class="tag">▤ {{ c }}</span> {% endfor %}</p>
+  {% if notes.get(r.key) %}<p class="note">{{ notes[r.key] }}</p>{% endif %}
+  <details><summary>Edit</summary>
+    <form method="post" action="/favorites/note"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="host" value="{{ r.host }}"><input type="hidden" name="slug" value="{{ r.slug }}">
+      <textarea name="note" maxlength="500" rows="2" aria-label="Note for {{ r.slug }}">{{ notes.get(r.key, "") }}</textarea><button>Save note</button></form>
+    <form method="post" action="/favorites/tag" class="inline"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="host" value="{{ r.host }}"><input type="hidden" name="slug" value="{{ r.slug }}">
+      <input name="tag" placeholder="tag" maxlength="30" aria-label="Tag for {{ r.slug }}" list="tags-{{ loop.index }}"><datalist id="tags-{{ loop.index }}">{% for t, n in all_tags %}<option value="{{ t }}">{% endfor %}</datalist>
+      <button name="action" value="add">Add tag</button></form>
+    {% for t in tags.get(r.key, []) %}<form method="post" action="/favorites/tag" class="inline"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="host" value="{{ r.host }}"><input type="hidden" name="slug" value="{{ r.slug }}"><input type="hidden" name="tag" value="{{ t }}">
+      <button name="action" value="remove" title="Remove tag {{ t }}">✕ {{ t }}</button></form>{% endfor %}
+    {% if collections %}<form method="post" action="/favorites/collection" class="inline"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="host" value="{{ r.host }}"><input type="hidden" name="slug" value="{{ r.slug }}">
+      <select name="name" aria-label="Collection">{% for c, n in collections %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select>
+      <button name="action" value="add">Add to collection</button><button name="action" value="remove">Remove from it</button></form>{% endif %}
+  </details></div>
 {% else %}
   <div class="card unavailable"><div class="name">{{ r.slug }} <span class="badge host-{{ r.host }}">{{ r.host }}</span></div>
   <p class="dim">host not configured</p><p>{{ r.description }}</p><div class="meta">★ {{ r.stars }} · {{ r.language or "n/a" }}</div>
@@ -15,5 +45,5 @@
     <button>Remove</button>
   </form></div>
 {% endif %}
-{% else %}<p class="dim">No favorites yet.</p>{% endfor %}
+{% else %}<p class="dim">{% if f_tag or f_collection or f_q %}No favorites match.{% else %}No favorites yet.{% endif %}</p>{% endfor %}
 </div>{% endblock %}

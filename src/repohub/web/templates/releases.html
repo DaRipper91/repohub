@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}New releases · RepoHub{% endblock %}
+{% block body %}<h2>New releases in your favorites</h2>
+<p class="dim">RepoHub compares each favorite's latest release with the one you last marked as seen. The first check only records a starting point, so nothing is "new" until a later release appears. <a href="/favorites">Back to favorites</a></p>
+{% for host, msg in errors.items() %}<p class="banner warn">{{ host }}: {{ msg }}</p>{% endfor %}
+{% if items %}
+<form method="post" action="/favorites/seen" class="inline"><input type="hidden" name="token" value="{{ token }}"><button>Mark all as seen</button></form>
+<div class="grid">
+{% for r, tag, published in items %}
+  <div class="card"><a href="/repo/{{ r.host }}/{{ r.slug }}"><div class="name">{{ r.slug }} <span class="badge host-{{ r.host }}">{{ r.host }}</span></div></a>
+  <p><strong>{{ tag }}</strong> {% if published %}<span class="dim">{{ published[:10] }}</span>{% endif %}</p>
+  <form method="post" action="/favorites/seen"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="host" value="{{ r.host }}"><input type="hidden" name="slug" value="{{ r.slug }}"><button>Mark as seen</button></form></div>
+{% endfor %}
+</div>
+{% else %}<p class="dim">Nothing new.</p>{% endif %}
+{% endblock %}

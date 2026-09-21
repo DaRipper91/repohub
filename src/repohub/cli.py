@@ -89,7 +89,16 @@ def _build_parser() -> argparse.ArgumentParser:
     sf.add_argument("--json", action="store_true")
 
     fv = sub.add_parser("favorites", help="list stored favorites (no network)")
+    fv.add_argument("--tag", metavar="TAG", help="only favorites with this tag")
+    fv.add_argument("--collection", metavar="NAME", help="only favorites in this collection")
+    fv.add_argument("--query", metavar="TEXT", help="only favorites whose name, description or note contains TEXT")
     fv.add_argument("--json", action="store_true")
+
+    rl = sub.add_parser("releases", help="favorites with a release you have not seen yet (asks each host; read-only)",
+                        description="Looks up the latest release of each favorite and lists those newer than the last "
+                                    "one you marked as seen in the web or terminal app. The first check only records "
+                                    "a starting point.")
+    rl.add_argument("--json", action="store_true")
 
     ho = sub.add_parser("hosts", help="list configured hosts (no network)",
                         description="List configured hosts and whether a token is present. "
@@ -368,7 +377,34 @@ def _cmd_shelf(args, hub, o: _Out) -> int:
 
 
 def _cmd_favorites(args, hub, o: _Out) -> int:
-    return _emit_list(o, args.json, hub.favorites.list(), {}, False)
+    favs = hub.favorites
+    tag = favs.clean_tag(args.tag) if args.tag else None
+    if args.tag and not tag:
+        o.err("error: not a valid tag")
+        return EXIT_USAGE
+    repos = favs.list(tag=tag, collection=args.collection, q=args.query)
+    notes, tags, colls = favs.notes(), favs.tags_by_key(), favs.collections_by_key()
+    dicts = [{**r.to_dict(), "note": _cell(notes.get(r.key, "")), "tags": [_cell(t) for t in tags.get(r.key, [])],
+              "collections": [_cell(c) for c in colls.get(r.key, [])]} for r in repos]
+    return _emit_list(o, args.json, repos, {}, False, repo_dicts=dicts)
+
+
+def _cmd_releases(args, hub, o: _Out) -> int:
+    errors = asyncio.run(hub.check_releases(force=True))
+    items = hub.favorites.new_releases()
+    o.errors(errors)
+    if args.json:
+        o.json({"schema_version": SCHEMA_VERSION, "new_releases": [
+            {"host": _cell(r.host), "slug": _cell(r.slug), "release": _cell(t), "published": _cell(p)} for r, t, p in items],
+            "errors": errors})
+    elif items:
+        o.out(_table(["repo", "host", "release", "published"],
+                     [[_fit(r.slug, 50), _fit(r.host, 20), _fit(t, 30), _date(p)] for r, t, p in items]))
+    else:
+        o.err("no new releases")
+    if not errors:
+        return EXIT_OK
+    return EXIT_PARTIAL if items else EXIT_ERROR
 
 
 def _cmd_hosts(args, hub, o: _Out, problems: list[str] | None = None, gh_cli: Callable | None = None) -> int:
@@ -560,7 +596,7 @@ def _cmd_accounts(args, hub, o: _Out) -> int:
 
 _COMMANDS = {"search": _cmd_search, "repo": _cmd_repo, "shelves": _cmd_shelves,
              "shelf": _cmd_shelf, "favorites": _cmd_favorites, "accounts": _cmd_accounts,
-             "recommend": _cmd_recommend, "similar": _cmd_similar,
+             "recommend": _cmd_recommend, "similar": _cmd_similar, "releases": _cmd_releases,
              "cloned": _cmd_cloned, "check": _cmd_check, "roots": _cmd_roots, "plan": _cmd_plan}
 
 
