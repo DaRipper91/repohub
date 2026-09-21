@@ -11,7 +11,9 @@ import json
 import os
 import stat
 import tempfile
+import threading
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -35,6 +37,27 @@ SKIP_NAMES = frozenset({"node_modules", "__pycache__", "site-packages", "venv", 
                         "vendor", "Trash", "lost+found"})
 
 
+_BAD = frozenset({"Cc", "Cf", "Cs", "Co", "Zl", "Zp"})  # control, format (bidi), surrogate, private-use, separators
+_REMOTE_FS = frozenset({"nfs", "nfs4", "cifs", "smb3", "smbfs", "afs", "9p", "ceph", "glusterfs", "davfs", "autofs",
+                        "fuse.sshfs", "fuse.rclone", "fuse.gvfsd-fuse", "fuse.davfs2", "fuse.s3fs", "fuse.curlftpfs"})
+
+
+def remote_mounts(mountinfo: str = "/proc/self/mountinfo") -> frozenset[str]:
+    """Mount points of network and FUSE-remote filesystems: a scan must not touch them (they can hang)."""
+    out: set[str] = set()
+    try:
+        with open(mountinfo, "rb") as f:
+            text = f.read(1_000_000).decode("utf-8", "replace")
+    except OSError:
+        return frozenset()
+    for line in text.splitlines():
+        left, sep, right = line.partition(" - ")
+        fields, rest = left.split(), right.split()
+        if sep and len(fields) > 4 and rest and rest[0] in _REMOTE_FS:
+            out.add(fields[4].replace("\\040", " "))
+    return frozenset(out)
+
+
 def _forbidden(path: str) -> bool:
     return path == "/" or any(path == f or path.startswith(f + "/") for f in FORBIDDEN)
 
@@ -43,7 +66,7 @@ def valid_root(value: object) -> Path | None:
     """A resolved, existing folder that is safe to use as a clone folder, else None."""
     if not isinstance(value, str) or not value or len(value) > MAX_PATH or "\x00" in value:
         return None
-    if any(ord(c) < 32 or ord(c) == 127 for c in value):
+    if any(unicodedata.category(c) in _BAD for c in value):
         return None
     try:
         p = Path(value).expanduser()
@@ -66,6 +89,7 @@ class ScanRoots:
 
     def __init__(self, path: Path | str | None = None):
         self._path = Path(path) if path is not None else None
+        self._lock = threading.Lock()  # add/remove are read-modify-write
 
     @property
     def path(self) -> Path:
@@ -73,10 +97,14 @@ class ScanRoots:
 
     def list(self) -> list[str]:
         try:
-            st = self.path.lstat()
-            if not stat.S_ISREG(st.st_mode) or st.st_size > MAX_FILE_BYTES:
-                return []
-            data = json.loads(self.path.read_text(encoding="utf-8"))
+            fd = os.open(self.path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)  # no symlink, never blocks on a FIFO
+            try:
+                st = os.fstat(fd)
+                if not stat.S_ISREG(st.st_mode) or st.st_size > MAX_FILE_BYTES:
+                    return []
+                data = json.loads(os.read(fd, MAX_FILE_BYTES).decode("utf-8"))
+            finally:
+                os.close(fd)
         except (OSError, ValueError):
             return []
         raw = data.get("roots") if isinstance(data, dict) else None
@@ -104,25 +132,27 @@ class ScanRoots:
 
     def add(self, values) -> list[str]:
         """Save valid folders (at most MAX_ROOTS in total). Returns the folders that were added."""
-        current = self.list()
-        added: list[str] = []
-        for v in values:
-            r = valid_root(v)
-            if r is None or str(r) in current or len(current) >= MAX_ROOTS:
-                continue
-            current.append(str(r))
-            added.append(str(r))
-        if added:
-            self._write(current)
-        return added
+        with self._lock:
+            current = self.list()
+            added: list[str] = []
+            for v in values:
+                r = valid_root(v)
+                if r is None or str(r) in current or len(current) >= MAX_ROOTS:
+                    continue
+                current.append(str(r))
+                added.append(str(r))
+            if added:
+                self._write(current)
+            return added
 
     def remove(self, value: str) -> bool:
-        current = self.list()
-        if value not in current:
-            return False
-        current.remove(value)
-        self._write(current)
-        return True
+        with self._lock:
+            current = self.list()
+            if value not in current:
+                return False
+            current.remove(value)
+            self._write(current)
+            return True
 
 
 @dataclass(frozen=True)
@@ -149,7 +179,8 @@ def discover(start: Path | str, *, max_depth: int = MAX_DEPTH, max_dirs: int = M
     Clones are not entered. Symlinks, hidden folders, build folders and system paths are never entered.
     """
     t0 = clock()
-    report = ScanReport(start=str(start))
+    report = ScanReport(start=clean_text(str(start)))
+    remote = remote_mounts()
     stack: list[tuple[str, int]] = [(str(start), 0)]
     found: dict[str, list[str]] = {}
     while stack:
@@ -157,7 +188,7 @@ def discover(start: Path | str, *, max_depth: int = MAX_DEPTH, max_dirs: int = M
             report.truncated = True
             break
         path, depth = stack.pop()
-        if _forbidden(path):
+        if _forbidden(path) or path in remote:  # system trees and network mounts are never entered
             continue
         report.dirs_seen += 1
         try:
@@ -170,6 +201,8 @@ def discover(start: Path | str, *, max_depth: int = MAX_DEPTH, max_dirs: int = M
             text = _read_config(Path(path))
             url = _origin_url(text) if text else None
             if url and parse_remote(url):
+                if depth == 0:
+                    continue  # the start folder itself is a clone: its parent is outside the scan
                 found.setdefault(str(Path(path).parent), []).append(Path(path).name)
                 continue  # a recognised clone is never descended into
             # a git folder that is not a recognised clone (a home folder kept in git, say) is walked as usual

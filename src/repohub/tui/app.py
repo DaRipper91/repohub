@@ -11,7 +11,7 @@ from textual.widgets import DataTable, Footer, Header, Input, Markdown, Static
 
 from repohub.core.awareness import Awareness
 from repohub.core.browse import load_all_shelves
-from repohub.core.roots import ScanRoots, discover, home_start
+from repohub.core.roots import BUDGET_SECONDS, ScanRoots, discover, home_start
 from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_clone
 from repohub.core.providers.base import ProviderError
 from repohub.core.queryparse import parse_query
@@ -226,6 +226,7 @@ class RepoHubApp(App):
         self.awareness = awareness if awareness is not None else Awareness(clone_root)
         self.roots = roots if roots is not None else ScanRoots()
         self.scan_report = None  # the last folder scan: in memory only
+        self._scanning = False
         if shelves is None:
             loaded = load_all_shelves()
             self.shelves, self.shelf_problems = loaded.shelves, list(loaded.problems)
@@ -418,15 +419,24 @@ class RepoHubApp(App):
         self.push_screen(ConfirmWrite("Scan the whole filesystem for git clones?\nSystem folders are skipped; it stops after 30 seconds."), done)
 
     def _start_scan(self, start) -> None:
+        if self._scanning:
+            self.notify("A scan is already running", markup=False)
+            return
+        self._scanning = True
         self._status("Scanning… (up to 30 seconds)")
-        self.run_worker(self._scan(start), exclusive=True)
+        self.run_worker(self._scan(start), exclusive=False, group="scan")
 
     async def _scan(self, start) -> None:
         try:
-            self.scan_report = await asyncio.to_thread(discover, start)
+            self.scan_report = await asyncio.wait_for(asyncio.to_thread(discover, start), BUDGET_SECONDS + 15)
+        except (asyncio.TimeoutError, TimeoutError):
+            self.notify("The scan took too long and was abandoned", severity="warning", markup=False)
+            return
         except Exception as e:
             self.notify(f"Scan failed: {e}", severity="error", markup=False)
             return
+        finally:
+            self._scanning = False
         if self.view == "folders":
             self._show_folders(f"Found {len(self.scan_report.candidates)} folder(s) with clones.")
 

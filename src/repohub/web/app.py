@@ -17,7 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from repohub.core.awareness import Awareness
-from repohub.core.roots import ScanRoots, discover, home_start
+from repohub.core.roots import BUDGET_SECONDS, ScanRoots, discover, home_start
 from repohub.core.browse import load_all_shelves
 from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_clone
 from repohub.core.hosts import registry
@@ -66,6 +66,9 @@ def _refresh_done(tasks: set):
             task.exception()  # mark as retrieved; a failed background refresh is not fatal
 
     return done
+
+
+SCAN_TIMEOUT = BUDGET_SECONDS + 15  # hard limit around a scan that a slow disk or mount keeps blocked
 
 
 def create_app(hub, clone_root, session_token: str | None = None, shelves=None, cloner=do_clone,
@@ -206,7 +209,9 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         folder_state["running"] = True
         try:
             start = home_start() if scope == "home" else Path("/")
-            folder_state["report"] = await run_in_threadpool(discover, start)
+            folder_state["report"] = await asyncio.wait_for(run_in_threadpool(discover, start), SCAN_TIMEOUT)
+        except (asyncio.TimeoutError, TimeoutError):
+            raise HTTPException(504, "the scan took too long and was abandoned; try a narrower place") from None
         finally:
             folder_state["running"] = False
         return RedirectResponse("/folders", status_code=303)

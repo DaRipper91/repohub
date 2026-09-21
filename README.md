@@ -285,6 +285,7 @@ repohub repo HOST:OWNER/NAME [--readme] [--json]
 repohub hosts [--json]
 repohub accounts [--json]
 repohub cloned [--json]
+repohub roots [--scan] [--system] [--json]
 repohub check HOST:OWNER/NAME [--json]
 repohub recommend [--limit N] [--json]
 repohub similar HOST:OWNER/NAME [--limit N] [--json]
@@ -319,7 +320,9 @@ repohub repo github:BurntSushi/ripgrep --json | jq -r '.release.assets[] | selec
 
 `repohub recommend` and `repohub similar` are read-only. Suggestions are worked out on your machine from your favorites, your starred repositories (read from each signed-in host, kept in memory for an hour, never saved) and, only if you turn it on, a local history of repositories you opened (off by default, at most 500 repositories for 90 days, cleared with one button). Only plain topic and language searches leave your machine. Every suggestion says why it appears; anything you already saved or starred, forks and archived repositories are left out, and no topic fills more than three slots. On the web the same lists appear on the home page and as "Similar repositories" on a repository page; the history switch and Clear button are on the Accounts page.
 
-`repohub cloned` lists repositories already in your clone folder (`REPOHUB_CLONE_DIR`, default `~/playground`). It needs no network and looks only at the folder's immediate subfolders, reading each one's `.git/config` for the origin URL (regular files only, never symlinks, size-capped). A repository shows up as **cloned** everywhere in the web app and with a `●` in the terminal app, whatever its folder is called.
+`repohub cloned` lists repositories already in your clone folder (`REPOHUB_CLONE_DIR`, default `~/playground`) and in any extra folders you picked (see below). It needs no network and looks only at the folder's immediate subfolders, reading each one's `.git/config` for the origin URL (regular files only, never symlinks, size-capped). A repository shows up as **cloned** everywhere in the web app and with a `●` in the terminal app, whatever its folder is called.
+
+**Picking more folders.** By default RepoHub looks only in your clone folder. To include other places, open **Folders** in the web app (or press `F5` in the terminal app) and press a scan button: *home folder* or *whole filesystem*. A scan runs only when you press it. It looks for folders that directly contain git clones from a configured host, never follows symlinks, skips hidden folders, build folders, network mounts and system folders (`/proc`, `/sys`, `/usr`, `/etc`, `/var/lib` and similar), and stops after 30 seconds. The results are not saved; you tick the folders you want and confirm, and only those paths are remembered in `~/.config/repohub/scan_roots.json`. You can remove a picked folder at any time. The web app only accepts folders that the last scan actually found. `repohub roots` lists the folders in use, and `repohub roots --scan` (with `--system` for the whole filesystem) shows what a scan finds without saving anything. In every case only each immediate subfolder's `.git/config` is read, and nothing is run.
 
 `repohub check HOST:OWNER/NAME` answers "can I run this here?" as advice, never by running anything: does the latest release have a build for this machine's CPU and operating system, are the build tools for the project type (guessed from the language, or from the file names in the cloned folder) on your `PATH`, is it already cloned. The verdict is one of likely, maybe, needs setup, unlikely or unknown, and it does not check a project's libraries. The same checklist is on every repository page and detail screen.
 

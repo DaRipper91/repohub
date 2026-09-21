@@ -451,3 +451,142 @@ async def test_tui_scan_keys_do_nothing_outside_the_folders_view(tmp_path, monke
         await pilot.press("s", "w")
         await pilot.pause()
         assert app.view == "shelves"
+
+
+# ---------------------------------------------------------------- review follow-ups
+
+def test_remote_mounts_are_read_from_mountinfo(tmp_path):
+    mi = tmp_path / "mountinfo"
+    mi.write_text("36 35 0:32 / /mnt/nas rw,relatime shared:1 - nfs4 server:/export rw\n"
+                  "40 35 0:40 / /mnt/my\\040share rw - cifs //srv/x rw\n"
+                  "41 35 0:41 / /home rw - btrfs /dev/nvme0n1p6 rw\n"
+                  "42 35 0:42 / /mnt/ssh rw - fuse.sshfs me@host: rw\n")
+    assert rt.remote_mounts(str(mi)) == {"/mnt/nas", "/mnt/my share", "/mnt/ssh"}
+    assert rt.remote_mounts(str(tmp_path / "missing")) == frozenset()
+
+
+def test_discover_never_enters_a_network_mount(tmp_path, monkeypatch):
+    clone(tmp_path / "local", "a")
+    clone(tmp_path / "nas", "b")
+    monkeypatch.setattr(rt, "remote_mounts", lambda *a: frozenset({str(tmp_path / "nas")}))
+    assert [c.path for c in discover(tmp_path).candidates] == [str(tmp_path / "local")]
+
+
+@pytest.mark.parametrize("code", [0x202E, 0x9B, 0x200B, 0x2028])
+def test_paths_with_bidi_or_control_characters_are_rejected(code):
+    assert valid_root("/tmp/a" + chr(code) + "b") is None
+
+
+def test_a_start_folder_that_is_itself_a_clone_does_not_offer_its_parent(tmp_path):
+    start = clone(tmp_path, "me")
+    assert discover(start).candidates == []
+
+
+def test_concurrent_adds_do_not_lose_updates(tmp_path):
+    import threading
+
+    s = ScanRoots(tmp_path / "roots.json")
+    dirs = []
+    for i in range(10):
+        d = tmp_path / f"d{i}"
+        d.mkdir()
+        dirs.append(str(d))
+    threads = [threading.Thread(target=s.add, args=([d],)) for d in dirs]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert sorted(s.list()) == sorted(dirs)
+
+
+def test_awareness_never_blocks_longer_than_the_wait_on_a_hung_folder(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    import repohub.core.awareness as aw
+
+    monkeypatch.setattr(aw, "SCAN_WAIT", 0.2)
+    release = threading.Event()
+    calls = []
+
+    def hung(root):
+        calls.append(1)
+        release.wait(5)
+        return {}
+
+    a = Awareness(tmp_path, MACHINE, scan=hung)
+    t0 = time.monotonic()
+    assert a.cloned() == {}
+    assert a.cloned(refresh=True) == {}
+    assert time.monotonic() - t0 < 1.5 and len(calls) == 1  # one scan in flight, not one per caller
+    release.set()
+
+
+def test_a_scan_started_before_invalidate_is_not_stored(tmp_path, monkeypatch):
+    import threading
+
+    import repohub.core.awareness as aw
+    from repohub.core.clonescan import CloneInfo
+
+    gate, started, state = threading.Event(), threading.Event(), {"n": 0}
+
+    def scan(root):
+        state["n"] += 1
+        if state["n"] == 1:
+            started.set()
+            gate.wait(3)
+            return {"github:o/old": CloneInfo("github", "o/old", "/x")}
+        return {"github:o/new": CloneInfo("github", "o/new", "/y")}
+
+    a = Awareness(tmp_path, MACHINE, scan=scan)
+    monkeypatch.setattr(aw, "SCAN_WAIT", 0.05)
+    a.cloned()
+    assert started.wait(2)
+    a.invalidate()
+    gate.set()
+    monkeypatch.setattr(aw, "SCAN_WAIT", 2)
+    assert set(a.cloned()) == {"github:o/new"}
+
+
+def test_web_scan_timeout_returns_504_and_frees_the_flag(tmp_path, monkeypatch):
+    import threading
+
+    import repohub.web.app as mod
+
+    c, *_ = web(tmp_path, monkeypatch)
+    release = threading.Event()
+    monkeypatch.setattr(mod, "SCAN_TIMEOUT", 0.2)
+    monkeypatch.setattr(mod, "discover", lambda start: release.wait(3) or ScanReport([], 0, False, 0.0, str(start)))
+    assert post(c, "/folders/scan", scope="home").status_code == 504
+    monkeypatch.setattr(mod, "discover", lambda start: ScanReport([], 0, False, 0.0, str(start)))
+    assert post(c, "/folders/scan", scope="home").status_code == 303  # not stuck at 429
+    release.set()
+
+
+async def test_tui_ignores_a_second_scan_while_one_runs(tmp_path, monkeypatch):
+    import threading
+
+    from repohub.tui.app import RepoHubApp
+
+    release = threading.Event()
+    calls = []
+
+    def slow(start):
+        calls.append(1)
+        release.wait(3)
+        return ScanReport([], 1, False, 0.0, str(start))
+
+    monkeypatch.setattr("repohub.tui.app.discover", slow)
+    main = tmp_path / "m"
+    main.mkdir()
+    app = RepoHubApp(make_hub(FakeProvider("github", [])), main, shelves=[Shelf("s", topic="x")],
+                     awareness=Awareness(main, MACHINE), roots=ScanRoots(tmp_path / "r.json"))
+    async with app.run_test() as pilot:
+        await pilot.press("f5")
+        await pilot.pause()
+        app.query_one("DataTable").focus()
+        await pilot.press("s")
+        await pilot.pause()
+        await pilot.press("s")
+        await pilot.pause()
+        release.set()
+        await app.workers.wait_for_complete()
+        assert len(calls) == 1
