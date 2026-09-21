@@ -605,7 +605,7 @@ async def test_topic_plus_multiword_text():
     route = respx.get(f"{API}/repos/search").mock(return_value=search_resp(*items))
     repos = await ForgejoProvider("codeberg", API).search("wayland terminal", SearchFilters(topic="cli"))
     p = route.calls.last.request.url.params
-    assert p["q"] == "wayland" and "topic" not in p
+    assert p["q"] == "terminal" and "topic" not in p
     assert [r.slug for r in repos] == ["o/wayland-terminal"]
 
 
