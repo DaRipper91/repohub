@@ -565,3 +565,20 @@ async def test_removed_host_keeps_favorites_and_refresh_skips_them():
     await hub.refresh_favorites(max_age=-1)
     assert {r.key for r in hub.favorites.list()} == {"gone:o/r", "github:o/r"}
     assert gh.calls == 1  # only the configured host was contacted
+
+
+def test_snapshot_url_uses_the_registry_domain():
+    from repohub.core.hosts import BUILTIN_HOSTS, HostRegistry, HostSpec, set_registry
+    snap = Snapshot("d", 1, "Go", "MIT", "2026-01-01")
+    assert repo_from_snapshot(ShelfEntry("codeberg", "o/r", "", snap), None).url == "https://codeberg.org/o/r"
+    assert repo_from_snapshot(ShelfEntry("github", "o/r", "", snap), None).url == "https://github.com/o/r"
+    assert repo_from_snapshot(ShelfEntry("gitlab", "g/s/r", "", snap), None).url == "https://gitlab.com/g/s/r"
+    extra = HostSpec("myforge", "forgejo", "myforge", "git.example.org", "https://git.example.org/api/v1",
+                     ("REPOHUB_MYFORGE_TOKEN",))
+    set_registry(HostRegistry(BUILTIN_HOSTS + (extra,)))
+    assert repo_from_snapshot(ShelfEntry("myforge", "o/r", "", snap), None).url == "https://git.example.org/o/r"
+
+
+def test_snapshot_url_is_empty_for_an_unconfigured_host():
+    r = repo_from_snapshot(ShelfEntry("nowhere", "o/r", "", None), None)
+    assert r.url == "" and r.host == "nowhere"

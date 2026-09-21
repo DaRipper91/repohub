@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "repohub"
 version = "0.3.0"
-description = "A store-style hub for GitHub and GitLab repositories, with a web app and a terminal app"
+description = "A store-style hub for GitHub, GitLab, Codeberg and other Forgejo repositories, with a web app, a terminal app and a CLI"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

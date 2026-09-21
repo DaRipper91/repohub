@@ -9,6 +9,7 @@ from typing import Callable
 
 from repohub.core.browse import Shelf, ShelfEntry
 from repohub.core.cache import Cache
+from repohub.core.hosts import registry
 from repohub.core.models import Release, Repo, SearchFilters
 from repohub.core.providers.base import NotFound, ProviderError, RateLimited
 from repohub.core.search import SearchResult, search_all
@@ -60,7 +61,8 @@ class CuratedPage:
 def repo_from_snapshot(entry: ShelfEntry, as_of: str | None) -> Repo:
     """Network-free Repo for a curated entry, built from its (optional) snapshot."""
     snap = entry.snapshot
-    return Repo(host=entry.host, slug=entry.slug, url=f"https://{entry.host}.com/{entry.slug}",
+    spec = registry().get(entry.host)  # an unconfigured host has no known domain: no link
+    return Repo(host=entry.host, slug=entry.slug, url=f"{spec.web_base}/{entry.slug}" if spec else "",
                 description=snap.description if snap else "", stars=snap.stars if snap else 0,
                 language=snap.language if snap else "", license=snap.license if snap else "",
                 topics=(), pushed_at=snap.pushed_at if snap else "", archived=False, forks=0,

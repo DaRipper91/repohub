@@ -320,7 +320,7 @@ def main(argv: list[str] | None = None) -> None:
 
     from repohub import __version__
 
-    parser = argparse.ArgumentParser(prog="repohub-tui", description="RepoHub terminal app for GitHub and GitLab repositories")
+    parser = argparse.ArgumentParser(prog="repohub-tui", description="RepoHub terminal app for browsing repositories on GitHub, GitLab, Codeberg and other Forgejo servers")
     parser.add_argument("--version", action="version", version=f"repohub {__version__}")
     parser.parse_args(argv)
 
