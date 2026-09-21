@@ -65,3 +65,40 @@ async def test_huge_updated_within_days_does_not_raise():
     gh = FakeProvider("github", [mk("github", "a/a", 5)])
     r = await run([gh], SearchFilters(updated_within_days=10**20))
     assert r.errors == {}
+
+
+async def test_sort_updated_orders_by_pushed_at_desc_ties_github_first_empty_last():
+    gh = FakeProvider("github", [
+        mk("github", "a/old", 1, pushed_at="2026-01-01T00:00:00Z"),
+        mk("github", "b/none", 99, pushed_at=""),
+        mk("github", "c/tie", 1, pushed_at="2026-05-01T00:00:00Z"),
+    ])
+    gl = FakeProvider("gitlab", [
+        mk("gitlab", "a/tie", 500, pushed_at="2026-05-01T00:00:00Z"),
+        mk("gitlab", "d/new", 2, pushed_at="2026-09-01T00:00:00Z"),
+    ])
+    r = await run([gh, gl], SearchFilters(sort="updated"))
+    assert [x.slug for x in r.repos] == ["d/new", "c/tie", "a/tie", "a/old", "b/none"]
+
+
+async def test_sort_forks_interleaves_hosts():
+    gh = FakeProvider("github", [mk("github", "a/a", 1, forks=5), mk("github", "b/b", 1, forks=1)])
+    gl = FakeProvider("gitlab", [mk("gitlab", "c/c", 1, forks=3), mk("gitlab", "d/d", 1, forks=9)])
+    r = await run([gh, gl], SearchFilters(sort="forks"))
+    assert [x.slug for x in r.repos] == ["d/d", "a/a", "c/c", "b/b"]
+
+
+async def test_hide_forks_removes_forks_from_both_hosts():
+    gh = FakeProvider("github", [mk("github", "a/a", 5, fork=True), mk("github", "b/b", 4)])
+    gl = FakeProvider("gitlab", [mk("gitlab", "c/c", 3, fork=True), mk("gitlab", "d/d", 2)])
+    r = await run([gh, gl], SearchFilters(hide_forks=True))
+    assert [x.slug for x in r.repos] == ["b/b", "d/d"]
+    r2 = await run([gh, gl])
+    assert len(r2.repos) == 4
+
+
+def test_ordered_is_stable_github_first_then_slug():
+    from repohub.core.search import _ordered
+    repos = [mk("gitlab", "a/a", 5), mk("github", "z/z", 5), mk("github", "B/b", 5), mk("gitlab", "0/0", 9)]
+    assert [x.slug for x in _ordered(repos, "stars")] == ["0/0", "B/b", "z/z", "a/a"]
+    assert [x.slug for x in _ordered(repos, "bogus")] == ["0/0", "B/b", "z/z", "a/a"]

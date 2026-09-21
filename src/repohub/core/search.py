@@ -29,7 +29,18 @@ def _keep(repo: Repo, f: SearchFilters) -> bool:
         return False
     if f.pushed_after and repo.pushed_at[:10] < f.pushed_after:
         return False
+    if f.hide_forks and repo.fork:
+        return False
     return True
+
+
+def _ordered(repos, sort: str) -> list[Repo]:
+    tied = sorted(repos, key=lambda r: (r.host != "github", r.slug.lower()))
+    if sort == "updated":
+        return sorted(tied, key=lambda r: r.pushed_at, reverse=True)
+    if sort == "forks":
+        return sorted(tied, key=lambda r: r.forks, reverse=True)
+    return sorted(tied, key=lambda r: r.stars, reverse=True)
 
 
 async def search_all(providers: dict, query: str, filters: SearchFilters, now: datetime | None = None) -> SearchResult:
@@ -54,5 +65,5 @@ async def search_all(providers: dict, query: str, filters: SearchFilters, now: d
             cur = best.get(repo.slug.lower())
             if cur is None or repo.stars > cur.stars or (repo.stars == cur.stars and repo.host == "github"):
                 best[repo.slug.lower()] = repo
-    repos = sorted(best.values(), key=lambda r: (-r.stars, r.host != "github", r.slug.lower()))
+    repos = _ordered(best.values(), filters.sort)
     return SearchResult(repos, errors)
