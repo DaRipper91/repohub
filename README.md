@@ -109,7 +109,9 @@ Open a repository to read its README and release info. Press `f` to favorite it 
 | `c` then `y` / `n` | Clone: shows the destination, then confirm or cancel |
 | `[` / `]` | Previous or next page of a curated shelf |
 | `Ctrl+F` | Show your favorites |
-| `F2` | Show your accounts: who you are signed in as on each host (read-only) |
+| `F2` | Show your accounts: who you are signed in as on each host, plus recent star and fork actions |
+
+On a repository's screen: `s` stars or unstars it and `k` forks it. Each asks `y`/`n` first, naming the host, repository and account, and makes one attempt (never retried). You must be signed in on that host (see the Accounts page).
 | `d` | Remove the selected favorite (favorites view; works for hosts that are no longer configured) |
 | `Esc` | Back from a repository, or return to the shelves |
 | `Ctrl+Q` | Quit |
@@ -435,7 +437,7 @@ RepoHub grows in phases. Each phase gets a written design, a task-by-task plan, 
 | **1. Foundations** | Filters and sorting everywhere, curated shelves and the 171-project catalog, the scriptable CLI (v0.2.0) | ✅ Done (13 tasks) |
 | **2. Other hosts** | A host registry and a Forgejo/Gitea provider: Codeberg built in, plus any Forgejo or Gitea instance you add in a config file (v0.3.0) | ✅ Done (10 tasks) |
 | **3. Accounts and login** | Uses the sign-ins you already have (env variables, `gh` CLI) and stores nothing; an Accounts page shows who you are on each host, where the token came from, its scopes and rate limit | ✅ Done (v0.4.0, reviewed) |
-| **4. Star and fork** | Star, unstar and fork from the web and terminal apps, always confirmed, with a local action log. The CLI stays read-only | 📝 Planned |
+| **4. Star and fork** | Star, unstar and fork from the web and terminal apps, always confirmed, with a local action log. The CLI stays read-only | ✅ Done (v0.5.0, reviewed; Codeberg not yet tried with a real token) |
 | **5. Recommendations** | Suggestions from your favorites, your stars, an opt-in local history, and "similar to this repo", all computed on your machine | 📝 Planned |
 | **6. Machine awareness** | "Already cloned" badges, a "Can I run this here?" panel (arm64 release assets, installed toolchains), and a shared project detector | ⏸️ Paused |
 | **7. Guided install and run** | Shows the exact install and run commands for a cloned repo; you approve each command before it runs, and output streams live | 📝 Planned |
@@ -504,7 +506,7 @@ Standing rules for every phase: the existing clone protections stay as they are;
 
 - **Phase 2, other hosts (done):** a host registry replacing the hard-coded GitHub and GitLab pair; a Forgejo/Gitea provider (search, README, releases); Codeberg built in; extra instances in `~/.config/repohub/hosts.yaml` with strict URL validation; search, shelves, favorites, the CLI and the clone allow-list all reading the registry.
 - **Phase 3, accounts and login (done):** token discovery per host; identity, scope and rate-limit lookups; an Accounts page in the web app, a key in the terminal app and a read-only `repohub accounts` command; nothing stored on disk.
-- **Phase 4, star and fork:** star, unstar and fork for GitHub, GitLab and Forgejo; a confirmation naming the host, repository and account; no automatic retries; a local action log.
+- **Phase 4, star and fork (done):** star, unstar and fork for GitHub, GitLab and Forgejo; a confirmation naming the host, repository and account; no automatic retries; a local action log.
 - **Phase 5, recommendations:** an interest profile from favorites, stars and an opt-in history; a "Recommended for you" shelf, "Similar repositories" on repo pages, and read-only `repohub recommend` and `repohub similar` commands; every suggestion explains why.
 - **Phase 6, machine awareness:** a project detector (Cargo.toml, pyproject or requirements, package.json, Makefile, Dockerfile); a toolchain check; a "can I run this here?" panel; "already cloned" badges from a scan of your clone folder only.
 - **Phase 7, guided install and run:** proposing commands from the detector; an approval step for every command; a runner confined to the cloned folder that streams output; strict review because it runs the repository's own code.
@@ -527,7 +529,7 @@ Standing rules for every phase: the existing clone protections stay as they are;
 - GitLab cannot sort by forks or hide forks server-side, so those options only apply to the results that were fetched.
 - Remote images in READMEs can load in the web app (the CSP allows `img-src *`), which shows your IP address to those hosts.
 - The cache is never purged; expired entries are only overwritten.
-- Not included yet: starring or forking from inside the app, and recommendations. Bitbucket is not planned. See the [roadmap](#-roadmap) for what is planned.
+- Not included yet: recommendations. Bitbucket is not planned. See the [roadmap](#-roadmap) for what is planned.
 
 ## 📜 License
 

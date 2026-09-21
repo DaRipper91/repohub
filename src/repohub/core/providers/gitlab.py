@@ -156,7 +156,7 @@ class GitLabProvider:
         me = clean_login((await self._call("GET", "/user", (200,))).json()["username"])
         if not me:
             raise ProviderError(self.host, "unexpected response")
-        found = (await self._call("GET", f"/projects/{pid}/starrers", (200,), {"search": me, "per_page": 20})).json()
+        found = (await self._call("GET", f"/projects/{pid}/starrers", (200,), {"search": me, "per_page": 100})).json()
         return any(isinstance(s, dict) and isinstance(s.get("user"), dict) and s["user"].get("username") == me
                    for s in found)
 

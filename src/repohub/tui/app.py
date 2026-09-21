@@ -63,6 +63,7 @@ class DetailScreen(Screen):
         super().__init__()
         self.hub, self.host, self.slug, self.clone_root, self.cloner = hub, host, slug, clone_root, cloner
         self.detail = None
+        self._writing = False  # one star/fork flow at a time: no stacked confirmations, no double sends
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -137,15 +138,20 @@ class DetailScreen(Screen):
 
     async def _write(self, action: str) -> None:
         """Ask first (naming host, repository and account), then make exactly one attempt."""
+        if self._writing:
+            return
+        self._writing = True
         try:
             acct = await self.hub.account(self.host)
             if acct.status != "signed in":
+                self._writing = False
                 self.notify(f"Not signed in on {self.host}: press F2 on the main screen", severity="warning", markup=False)
                 return
             if action == "star":
                 on = await self.hub.starred(self.host, self.slug)
                 action = "unstar" if on else "star"
         except Exception as e:
+            self._writing = False
             self.notify(f"Could not check the account: {e}", severity="error", markup=False)
             return
         what = {"star": "Star", "unstar": "Unstar", "fork": "Fork"}[action]
@@ -156,6 +162,8 @@ class DetailScreen(Screen):
         def done(confirmed: bool | None) -> None:
             if confirmed:
                 self.run_worker(self._do_write(action), exclusive=False, group="write")
+            else:
+                self._writing = False
 
         self.app.push_screen(ConfirmWrite(text), done)
 
@@ -169,6 +177,8 @@ class DetailScreen(Screen):
                 self.notify("Starred" if action == "star" else "Unstarred", markup=False)
         except Exception as e:  # ProviderError text is already short and sanitised; one attempt, no retry
             self.notify(f"{action} failed: {e}", severity="error", markup=False)
+        finally:
+            self._writing = False
 
     def action_clone(self) -> None:
         try:

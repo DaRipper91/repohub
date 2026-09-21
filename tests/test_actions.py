@@ -488,3 +488,77 @@ def test_cli_has_no_write_commands():
             cli.main([cmd, "github:o/r"], hub_factory=lambda: pytest.fail("no hub"), stdout=io.StringIO(),
                      stderr=io.StringIO())
         assert e.value.code == 2
+
+
+# ---------------------------------------------------------------- review follow-ups
+
+@respx.mock
+async def test_403_with_retry_after_is_a_rate_limit_not_a_permission_problem():
+    respx.put(f"{GH}/user/starred/o/r").mock(return_value=httpx.Response(403, headers={"retry-after": "60"}))
+    with pytest.raises(RateLimited):
+        await GitHubProvider("tok").star("o/r")
+
+
+@respx.mock
+async def test_redirects_are_not_followed_by_writes():
+    hop = respx.get("https://evil.example/x").mock(return_value=httpx.Response(204))
+    respx.put(f"{GH}/user/starred/o/r").mock(return_value=httpx.Response(307, headers={"location": "https://evil.example/x"}))
+    with pytest.raises(ProviderError, match="HTTP 307"):
+        await GitHubProvider("tok").star("o/r")
+    assert hop.call_count == 0
+
+
+async def test_hub_cancelled_write_is_logged_and_cache_dropped():
+    import asyncio
+
+    class Slow(WriteProvider):
+        async def star(self, slug):
+            await asyncio.sleep(30)
+
+    h = mkhub(Slow())
+    h.cache.set("repo:github@github.com:o/r", {"x": 1}, 999)
+    task = asyncio.ensure_future(h.set_star("github", "o/r", True))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert "cancelled" in h.recent_actions()[0].result and h.cache.get("repo:github@github.com:o/r") is None
+
+
+async def test_hub_broken_log_does_not_turn_success_into_error():
+    class Broken(ActionLog):
+        def add(self, *a, **k):
+            raise RuntimeError("database is locked")
+
+    p = WriteProvider()
+    h = Hub({"github": p}, Cache(), Favorites(), actions=Broken())
+    h.cache.set("repo:github@github.com:o/r", {"x": 1}, 999)
+    await h.set_star("github", "o/r", True)  # must not raise
+    assert h.cache.get("repo:github@github.com:o/r") is None
+    p.error = ProviderError("github", "HTTP 500")
+    with pytest.raises(ProviderError, match="HTTP 500"):  # the real error is not masked by the log failure
+        await h.set_star("github", "o/r", True)
+
+
+async def test_tui_double_press_stacks_one_confirmation(tmp_path):
+    from repohub.tui.app import ConfirmWrite
+
+    p = WebProvider()
+    app, _ = tui(p, tmp_path)
+    async with app.run_test() as pilot:
+        await _open_detail(app, pilot)
+        await pilot.press("k", "k")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmWrite) and len(app.screen_stack) == 3  # default + detail + one modal
+        await pilot.press("n")
+        await pilot.pause()
+        await pilot.press("k")  # allowed again after cancelling
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmWrite)
+
+
+def test_confirm_form_disables_its_button_while_sending(tmp_path):
+    c, _ = web(WebProvider(), tmp_path)
+    assert 'hx-disabled-elt="find button"' in c.get("/fork?host=github&slug=o/r").text

@@ -113,7 +113,7 @@ async def call(client, host: str, method: str, path: str, *, ok: tuple[int, ...]
         return out
     retry = headers.get("retry-after", "")
     reset = headers.get("x-ratelimit-reset", "")
-    if code == 429 or (code == 403 and headers.get("x-ratelimit-remaining") == "0"):
+    if code == 429 or (code == 403 and (headers.get("x-ratelimit-remaining") == "0" or retry.isdigit())):
         at = int(reset) if reset.isdigit() else (int(time.time()) + int(retry) if retry.isdigit() else None)
         raise RateLimited(host, "rate limited", at)
     if code == 401:

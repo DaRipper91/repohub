@@ -346,23 +346,34 @@ class Hub:
     async def fork(self, host: str, slug: str) -> ForkResult:
         return await self._act(host, slug, "fork", lambda p: p.fork(slug))
 
+    def _log(self, host: str, slug: str, action: str, ok: bool, result: str) -> None:
+        try:
+            self.actions.add(host, slug, action, ok, result)
+        except Exception:  # a broken log must never turn a finished write into an error, or hide the real one
+            pass
+
     async def _act(self, host: str, slug: str, action: str, run):
         try:
             provider = await self._require_signed_in(host, slug)
             result = await with_deadline(host, run(provider))  # exactly one attempt
+        except asyncio.CancelledError:
+            # The request may already have reached the host: record it and drop stale cached stats.
+            self._log(host, slug, action, False, "cancelled; the host may have applied it")
+            self._drop_repo_cache(host, slug)
+            raise
         except RateLimited as e:
             if self._limit_message(host) is None:  # a fresh limit from the host, not our own pause
                 self._note_rate_limit(host, e)
-            self.actions.add(host, slug, action, False, str(e))
+            self._log(host, slug, action, False, str(e))
             raise
         except ProviderError as e:
-            self.actions.add(host, slug, action, False, str(e))
+            self._log(host, slug, action, False, str(e))
             raise
         except Exception:
-            self.actions.add(host, slug, action, False, "unexpected error")
+            self._log(host, slug, action, False, "unexpected error")
             raise ProviderError(host, "unexpected error") from None
-        self.actions.add(host, slug, action, True, f"forked to {result.slug}" if action == "fork" else "done")
         self._drop_repo_cache(host, slug)
+        self._log(host, slug, action, True, f"forked to {result.slug}" if action == "fork" else "done")
         return result
 
     def recent_actions(self, limit: int = 20) -> list[ActionEntry]:
