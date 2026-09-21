@@ -45,7 +45,7 @@
 |---|---|
 | 🔎 **One search, every host** | GitHub, GitLab and Codeberg are queried together and merged into a single ranked list. Codeberg is built in, and a `hosts.yaml` file adds more Forgejo or Gitea servers (see [Hosts](#-hosts)). Filter by language, minimum stars, recent activity and host; sort by stars, last update or forks; hide forks. A small [search syntax](#-search-syntax) (`lang:rust stars:>500 nofork sort:updated`) works the same in the web app, the terminal app and the CLI. If one host fails or rate-limits you, the other hosts' results still show. |
 | 🗂️ **Store-style shelves** | Browse shelves without typing a query: six search shelves (Terminal tools, Local AI, Retro and emulation, Self-hosted, Creative coding, Networking) and nine curated **Catalog** shelves of hand-picked projects with a note on each (171 across eight general shelves, plus 18 on Codeberg). Add your own shelves in a personal YAML file. |
-| 💻 **A scriptable CLI** | `repohub search`, `repo`, `shelves`, `shelf`, `favorites` and `hosts` print readable tables or stable JSON, with documented exit codes. Read-only by design. |
+| 💻 **A scriptable CLI** | `repohub search`, `repo`, `shelves`, `shelf`, `favorites`, `hosts` and `accounts` print readable tables or stable JSON, with documented exit codes. Read-only by design. |
 | 📄 **Repo pages that read like an app page** | Rendered README, stars, forks, license, topics, and the latest release with its files. A green **arm64** badge appears when a release ships an arm64 or aarch64 build. |
 | ⭐ **Favorites** | Save repos to a local wishlist. Stats refresh in the background and never block the page. |
 | 📥 **Safe clone** | Shows the exact destination and asks before doing anything. Shallow clone, `https` on a configured host only (`github.com`, `gitlab.com`, `codeberg.org` and any host in your `hosts.yaml`), and no install or build steps are ever run. |
@@ -310,7 +310,7 @@ repohub repo github:BurntSushi/ripgrep --json | jq -r '.release.assets[] | selec
 
 `repohub hosts` never prints token values: only `token: true/false` and the names of the variables to set. Problems with `hosts.yaml` appear as `warning:` lines on stderr and in `"problems"`.
 
-**Exit codes.** `0` success; `1` error (a host failed and there were no results, an unknown shelf or repository, an unexpected error, or a curated shelf refresh that failed for every entry even though snapshot rows were printed); `2` usage error (including a malformed `HOST:OWNER/NAME`); `3` partial success (some results, but a host reported an error, or a curated shelf refreshed only some entries); `130` interrupted. Table output cells are sanitised and truncated to keep lines readable.
+**Exit codes.** `0` success; `1` error (a host failed and there were no results, an unknown shelf or repository, an unexpected error, or a curated shelf refresh that failed for every entry even though snapshot rows were printed); `2` usage error (including a malformed `HOST:OWNER/NAME`); `3` partial success (some results, but a host reported an error, or a curated shelf refreshed only some entries); `130` interrupted. `repohub accounts` exits `0` when every host answers (signed in or not), `3` when only some do, and `1` when none do. Table output cells are sanitised and truncated to keep lines readable.
 
 ## 🧠 How it works
 
@@ -434,7 +434,7 @@ RepoHub grows in phases. Each phase gets a written design, a task-by-task plan, 
 | **v1** | Cross-host search, shelves, repo pages, favorites, safe clone, web app and terminal app | ✅ Done (13 tasks) |
 | **1. Foundations** | Filters and sorting everywhere, curated shelves and the 171-project catalog, the scriptable CLI (v0.2.0) | ✅ Done (13 tasks) |
 | **2. Other hosts** | A host registry and a Forgejo/Gitea provider: Codeberg built in, plus any Forgejo or Gitea instance you add in a config file (v0.3.0) | ✅ Done (10 tasks) |
-| **3. Accounts and login** | Uses the sign-ins you already have (env variables, `gh` CLI) and stores nothing; an Accounts page shows who you are on each host, where the token came from, its scopes and rate limit | ✅ Done (v0.4.0) |
+| **3. Accounts and login** | Uses the sign-ins you already have (env variables, `gh` CLI) and stores nothing; an Accounts page shows who you are on each host, where the token came from, its scopes and rate limit | ✅ Done (v0.4.0, reviewed) |
 | **4. Star and fork** | Star, unstar and fork from the web and terminal apps, always confirmed, with a local action log. The CLI stays read-only | 📝 Planned |
 | **5. Recommendations** | Suggestions from your favorites, your stars, an opt-in local history, and "similar to this repo", all computed on your machine | 📝 Planned |
 | **6. Machine awareness** | "Already cloned" badges, a "Can I run this here?" panel (arm64 release assets, installed toolchains), and a shared project detector | ⏸️ Paused |
