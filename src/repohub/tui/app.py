@@ -37,9 +37,27 @@ class ConfirmClone(ModalScreen[bool]):
         self.dismiss(False)
 
 
+class ConfirmWrite(ModalScreen[bool]):
+    """y/n confirmation for an action that changes the user's account. Text is shown as plain text."""
+    BINDINGS = [Binding("y", "confirm", "Yes"), Binding("n", "cancel", "No"), Binding("escape", "cancel", "No")]
+
+    def __init__(self, text: str):
+        super().__init__()
+        self.text = text
+
+    def compose(self) -> ComposeResult:
+        yield Static(f"{self.text}\n\ny = confirm    n = cancel", markup=False)
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+
 class DetailScreen(Screen):
     BINDINGS = [Binding("escape", "back", "Back"), Binding("f", "favorite", "Favorite"),
-                Binding("c", "clone", "Clone")]
+                Binding("c", "clone", "Clone"), Binding("s", "star", "Star/unstar"), Binding("k", "fork", "Fork")]
 
     def __init__(self, hub, host: str, slug: str, clone_root, cloner):
         super().__init__()
@@ -104,6 +122,53 @@ class DetailScreen(Screen):
             self.notify(f"Could not update favorites: {e}", severity="error", markup=False)
             return
         self._render_meta()
+
+    def action_star(self) -> None:
+        if self.detail is None:
+            self.notify("Still loading", markup=False)
+            return
+        self.run_worker(self._write("star"), exclusive=False, group="write")
+
+    def action_fork(self) -> None:
+        if self.detail is None:
+            self.notify("Still loading", markup=False)
+            return
+        self.run_worker(self._write("fork"), exclusive=False, group="write")
+
+    async def _write(self, action: str) -> None:
+        """Ask first (naming host, repository and account), then make exactly one attempt."""
+        try:
+            acct = await self.hub.account(self.host)
+            if acct.status != "signed in":
+                self.notify(f"Not signed in on {self.host}: press F2 on the main screen", severity="warning", markup=False)
+                return
+            if action == "star":
+                on = await self.hub.starred(self.host, self.slug)
+                action = "unstar" if on else "star"
+        except Exception as e:
+            self.notify(f"Could not check the account: {e}", severity="error", markup=False)
+            return
+        what = {"star": "Star", "unstar": "Unstar", "fork": "Fork"}[action]
+        text = f"{what} {self.slug}\nHost: {self.host}\nAccount: {acct.login or 'unknown'}"
+        if action == "fork":
+            text += "\nThis creates a repository in your account. RepoHub never deletes it."
+
+        def done(confirmed: bool | None) -> None:
+            if confirmed:
+                self.run_worker(self._do_write(action), exclusive=False, group="write")
+
+        self.app.push_screen(ConfirmWrite(text), done)
+
+    async def _do_write(self, action: str) -> None:
+        try:
+            if action == "fork":
+                res = await self.hub.fork(self.host, self.slug)
+                self.notify(f"Forked to {res.slug}", markup=False)
+            else:
+                await self.hub.set_star(self.host, self.slug, action == "star")
+                self.notify("Starred" if action == "star" else "Unstarred", markup=False)
+        except Exception as e:  # ProviderError text is already short and sanitised; one attempt, no retry
+            self.notify(f"{action} failed: {e}", severity="error", markup=False)
 
     def action_clone(self) -> None:
         try:
@@ -241,7 +306,9 @@ class RepoHubApp(App):
             t.add_row(Text(i.host), Text(i.status), Text(i.login or "-"), Text(i.source or "-"),
                       Text(scopes), Text(rate), Text(i.can_star_fork), key=f"account:{i.host}")
         notes = [f"{i.host}: {i.message or i.hint}" for i in infos if i.message or i.hint]
-        self._status("Accounts (read-only; nothing is stored).  " + "  ".join(notes))
+        recent = self.hub.recent_actions(3)
+        notes += [f"{'ok' if e.ok else 'failed'} {e.action} {e.slug} on {e.host}" for e in recent]
+        self._status("Accounts (nothing is stored).  " + "  ".join(notes))
 
     def action_remove_favorite(self) -> None:
         """Favorites view only: remove the selected row without opening it (works for unconfigured hosts)."""

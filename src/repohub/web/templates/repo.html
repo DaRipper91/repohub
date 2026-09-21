@@ -9,6 +9,12 @@
   <p class="meta">★ {{ r.stars }} · ⑂ {{ r.forks }} · {{ r.language or "n/a" }} · {{ r.license or "no license" }} · last push {{ r.pushed_at[:10] }}</p>
   <div class="actions">
     {% with host=r.host, slug=r.slug %}{% include "_fav_button.html" %}{% endwith %}
+    {% if signed_in %}
+      {% if starred is none %}<a class="button" href="/star?host={{ r.host }}&slug={{ r.slug | urlencode }}&action=star">☆ Star…</a>
+      {% elif starred %}<a class="button" href="/star?host={{ r.host }}&slug={{ r.slug | urlencode }}&action=unstar">★ Starred · Unstar…</a>
+      {% else %}<a class="button" href="/star?host={{ r.host }}&slug={{ r.slug | urlencode }}&action=star">☆ Star…</a>{% endif %}
+      <a class="button" href="/fork?host={{ r.host }}&slug={{ r.slug | urlencode }}">Fork…</a>
+    {% endif %}
     <a class="button" href="/clone?host={{ r.host }}&slug={{ r.slug | urlencode }}">Clone…</a>
     {% if r.url.lower().startswith(("http://", "https://")) %}<a class="button" href="{{ r.url }}" rel="noopener noreferrer">Open on {{ r.host }}</a>{% endif %}
   </div>

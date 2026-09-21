@@ -1,0 +1,3 @@
+<p class="banner">Forked {{ slug }} to {{ fork.slug }}. It may take a minute before its files are available.</p>
+<p><a class="button" href="/repo/{{ host }}/{{ fork.slug }}">Open the fork in RepoHub</a>
+{% if fork.url.lower().startswith(("http://", "https://")) %} <a class="button" href="{{ fork.url }}" rel="noopener noreferrer">Open on {{ host }}</a>{% endif %}</p>

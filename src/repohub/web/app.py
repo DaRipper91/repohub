@@ -21,7 +21,7 @@ from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_cl
 from repohub.core.hosts import registry
 from repohub.core.models import SORTS, SearchFilters
 from repohub.core.hub import CURATED_PAGE
-from repohub.core.providers.base import NotFound, ProviderError
+from repohub.core.providers.base import ActionDenied, Conflict, NotFound, ProviderError, RateLimited
 from repohub.core.models import MAX_DAYS, MAX_STARS
 from repohub.core.queryparse import parse_query
 
@@ -173,12 +173,14 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
             return page(request, "_message.html", status=404, message=f"Could not load {slug}: {e}")
         except ProviderError as e:
             return page(request, "_message.html", status=502, message=f"Could not load {slug}: {e}")
+        acct = await hub.account(host)
+        starred = await hub.starred(host, slug) if acct.status == "signed in" else None
         return page(request, "repo.html", d=d, readme_html=render_markdown(d.readme) if d.readme else "",
-                    is_fav=hub.favorites.is_favorite(d.repo.key))
+                    is_fav=hub.favorites.is_favorite(d.repo.key), signed_in=acct.status == "signed in", starred=starred)
 
     @app.get("/accounts", response_class=HTMLResponse)
     async def accounts_page(request: Request):
-        return page(request, "accounts.html", accounts=await hub.accounts())
+        return page(request, "accounts.html", accounts=await hub.accounts(), recent=hub.recent_actions(20))
 
     @app.get("/favorites", response_class=HTMLResponse)
     async def favorites_page(request: Request):
@@ -237,6 +239,57 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         except CloneError as e:
             return page(request, "_message.html", message=f"Clone failed: {e}")
         return page(request, "_message.html", message=f"Cloned to {target}")
+
+    async def confirm_write(request: Request, host: str, slug: str, action: str):
+        """A confirmation page only: it changes nothing. It names the host, repository and account."""
+        require_repo(host, slug)
+        acct = await hub.account(host)
+        if acct.status != "signed in":
+            return page(request, "_message.html", status=403,
+                        message=f"Not signed in on {host}. Set a token for it and check the Accounts page.")
+        return page(request, "write_confirm.html", host=host, slug=slug, action=action, acct=acct)
+
+    async def run_write(request: Request, host: str, slug: str, action: str, token_field: str):
+        require_token(token_field)
+        require_repo(host, slug)
+        try:
+            if action == "fork":
+                res = await hub.fork(host, slug)
+                return page(request, "fork_done.html", host=host, slug=slug, fork=res)
+            await hub.set_star(host, slug, action == "star")
+        except ActionDenied as e:
+            return page(request, "_message.html", status=403, message=str(e))
+        except RateLimited as e:
+            return page(request, "_message.html", status=429, message=str(e))
+        except NotFound as e:
+            return page(request, "_message.html", status=404, message=str(e))
+        except Conflict as e:
+            return page(request, "_message.html", status=409, message=str(e))
+        except ProviderError as e:
+            return page(request, "_message.html", status=502, message=f"{action} failed: {e}")
+        return page(request, "_message.html", message=("Starred " if action == "star" else "Unstarred ") + slug)
+
+    @app.get("/star", response_class=HTMLResponse)
+    async def star_confirm(request: Request, host: str, slug: str, action: str = "star"):
+        if action not in ("star", "unstar"):
+            raise HTTPException(404, "not found")
+        return await confirm_write(request, host, slug, action)
+
+    @app.post("/star", response_class=HTMLResponse)
+    async def star_run(request: Request, host: str = Form(...), slug: str = Form(...), action: str = Form(...),
+                       token_field: str = Form("", alias="token")):
+        if action not in ("star", "unstar"):
+            raise HTTPException(404, "not found")
+        return await run_write(request, host, slug, action, token_field)
+
+    @app.get("/fork", response_class=HTMLResponse)
+    async def fork_confirm(request: Request, host: str, slug: str):
+        return await confirm_write(request, host, slug, "fork")
+
+    @app.post("/fork", response_class=HTMLResponse)
+    async def fork_run(request: Request, host: str = Form(...), slug: str = Form(...),
+                       token_field: str = Form("", alias="token")):
+        return await run_write(request, host, slug, "fork", token_field)
 
     return app
 

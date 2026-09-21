@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block body %}
+<h2>{% if action == "fork" %}Fork{% elif action == "star" %}Star{% else %}Unstar{% endif %} {{ slug }}?</h2>
+<p>Host: <strong>{{ host }}</strong><br>Account: <strong>{{ acct.login or "unknown" }}</strong></p>
+{% if action == "fork" %}
+<p class="banner warn">This creates a new repository in your account on {{ host }}. RepoHub never deletes repositories, so removing the fork later is up to you.</p>
+{% else %}
+<p>This changes your account on {{ host }}: your star for this repository will be {{ "added" if action == "star" else "removed" }}.</p>
+{% endif %}
+<form hx-post="/{{ 'fork' if action == 'fork' else 'star' }}" hx-target="#result" hx-swap="innerHTML">
+  <input type="hidden" name="host" value="{{ host }}"><input type="hidden" name="slug" value="{{ slug }}">
+  <input type="hidden" name="action" value="{{ action }}"><input type="hidden" name="token" value="{{ token }}">
+  <button>Confirm {{ action }}</button> <a class="button" href="/repo/{{ host }}/{{ slug }}">Cancel</a>
+</form>
+<div id="result"></div>
+{% endblock %}

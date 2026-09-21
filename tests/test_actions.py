@@ -282,5 +282,209 @@ async def test_hub_starred_never_raises():
     h = mkhub(p)
     assert await h.starred("github", "o/r") is True
     p.error = ProviderError("github", "x")
-    assert await h.starred("github", "o/r") is None
+    assert await h.starred("github", "o/r") is True  # cached for a minute
+    assert await mkhub(p).starred("github", "o/r") is None
     assert await mkhub(WriteProvider(signed_in=False)).starred("github", "o/r") is None
+
+
+async def test_hub_star_state_cache_is_dropped_by_an_action():
+    p = WriteProvider()
+    h = mkhub(p)
+    await h.starred("github", "o/r")
+    await h.starred("github", "o/r")
+    assert p.calls_log == [("starred", "o/r")]
+    await h.set_star("github", "o/r", False)
+    await h.starred("github", "o/r")
+    assert [c[0] for c in p.calls_log] == ["starred", "unstar", "starred"]
+
+
+# ---------------------------------------------------------------- web
+
+from fastapi.testclient import TestClient
+
+from helpers import mk
+from repohub.core.browse import Shelf
+from repohub.web.app import create_app
+
+TOKEN = "sess-token"
+
+
+class WebProvider(WriteProvider):
+    def __init__(self, **kw):
+        super().__init__(**kw)
+        self.repos = [mk("github", "o/r", 5)]
+
+
+def web(p, tmp_path):
+    h = mkhub(p)
+    app = create_app(h, tmp_path, session_token=TOKEN, shelves=[Shelf("s", topic="x")])
+    return TestClient(app, base_url="http://localhost"), h
+
+
+def test_get_routes_never_write(tmp_path):
+    p = WebProvider()
+    c, _ = web(p, tmp_path)
+    for url in ("/star?host=github&slug=o/r&action=star", "/star?host=github&slug=o/r&action=unstar",
+                "/fork?host=github&slug=o/r"):
+        r = c.get(url)
+        assert r.status_code == 200 and "Confirm" in r.text and "me" in r.text
+    assert [x for x in p.calls_log if x[0] in ("star", "unstar", "fork")] == []
+
+
+def test_confirm_pages_name_host_repo_account_and_fork_warns(tmp_path):
+    c, _ = web(WebProvider(), tmp_path)
+    t = c.get("/fork?host=github&slug=o/r").text
+    assert "github" in t and "o/r" in t and "me" in t and "never deletes" in t
+
+
+def test_post_requires_session_token(tmp_path):
+    p = WebProvider()
+    c, _ = web(p, tmp_path)
+    for path, data in (("/star", {"host": "github", "slug": "o/r", "action": "star"}),
+                       ("/fork", {"host": "github", "slug": "o/r"})):
+        assert c.post(path, data=data).status_code == 403
+        assert c.post(path, data={**data, "token": "wrong"}).status_code == 403
+    assert [x for x in p.calls_log if x[0] in ("star", "fork")] == []
+
+
+def test_post_star_and_fork_succeed_and_are_logged(tmp_path):
+    p = WebProvider()
+    c, h = web(p, tmp_path)
+    r = c.post("/star", data={"host": "github", "slug": "o/r", "action": "star", "token": TOKEN})
+    assert r.status_code == 200 and "Starred" in r.text
+    r = c.post("/fork", data={"host": "github", "slug": "o/r", "token": TOKEN})
+    assert r.status_code == 200 and "me/r" in r.text
+    assert [e.action for e in h.recent_actions()] == ["fork", "star"]
+    assert "fork" in c.get("/accounts").text
+
+
+def test_post_rejects_unknown_action_and_bad_slug(tmp_path):
+    p = WebProvider()
+    c, _ = web(p, tmp_path)
+    assert c.post("/star", data={"host": "github", "slug": "o/r", "action": "delete", "token": TOKEN}).status_code == 404
+    assert c.post("/star", data={"host": "github", "slug": "../x", "action": "star", "token": TOKEN}).status_code == 404
+    assert c.get("/star?host=github&slug=o/r&action=delete").status_code == 404
+    assert p.calls_log == []
+
+
+@pytest.mark.parametrize("error,status", [(ActionDenied("github", "no"), 403), (RateLimited("github", "slow", None), 429),
+                                          (NotFound("github", "gone"), 404), (Conflict("github", "taken"), 409),
+                                          (ProviderError("github", "HTTP 500"), 502)])
+def test_post_failures_map_to_statuses(tmp_path, error, status):
+    p = WebProvider(error=error)
+    c, _ = web(p, tmp_path)
+    r = c.post("/star", data={"host": "github", "slug": "o/r", "action": "star", "token": TOKEN})
+    assert r.status_code == status
+    assert [x[0] for x in p.calls_log].count("star") == 1  # one attempt only
+
+
+def test_not_signed_in_gets_no_confirmation_and_no_buttons(tmp_path):
+    p = WebProvider(signed_in=False)
+    c, _ = web(p, tmp_path)
+    assert c.get("/star?host=github&slug=o/r&action=star").status_code == 403
+    page_ = c.get("/repo/github/o/r").text
+    assert "Star…" not in page_ and "Fork…" not in page_
+
+
+def test_repo_page_shows_star_state_when_signed_in(tmp_path):
+    c, _ = web(WebProvider(), tmp_path)
+    t = c.get("/repo/github/o/r").text
+    assert "Unstar…" in t and "Fork…" in t  # WriteProvider.starred() says True
+
+
+def test_action_log_escapes_hostile_text(tmp_path):
+    p = WebProvider(error=ProviderError("github", "<script>alert(1)</script>"))
+    c, _ = web(p, tmp_path)
+    c.post("/star", data={"host": "github", "slug": "o/r", "action": "star", "token": TOKEN})
+    assert "<script>alert(1)</script>" not in c.get("/accounts").text
+
+
+# ---------------------------------------------------------------- terminal app
+
+async def _open_detail(app, pilot):
+    from repohub.tui.app import DetailScreen
+
+    app.push_screen(DetailScreen(app.hub, "github", "o/r", app.clone_root, app.cloner))
+    await app.workers.wait_for_complete()
+    await pilot.pause()
+
+
+def tui(p, tmp_path):
+    from repohub.tui.app import RepoHubApp
+
+    h = mkhub(p)
+    return RepoHubApp(h, tmp_path, shelves=[Shelf("s", topic="x")]), h
+
+
+async def test_tui_star_needs_confirmation_and_n_cancels(tmp_path):
+    from repohub.tui.app import ConfirmWrite
+
+    p = WebProvider()
+    app, h = tui(p, tmp_path)
+    async with app.run_test() as pilot:
+        await _open_detail(app, pilot)
+        await pilot.press("s")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmWrite) and "Unstar o/r" in app.screen.text and "Account: me" in app.screen.text
+        assert [x for x in p.calls_log if x[0] in ("star", "unstar")] == []
+        await pilot.press("n")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert [x for x in p.calls_log if x[0] in ("star", "unstar")] == [] and h.recent_actions() == []
+
+
+async def test_tui_star_confirmed_once_and_logged(tmp_path):
+    p = WebProvider()
+    app, h = tui(p, tmp_path)
+    async with app.run_test() as pilot:
+        await _open_detail(app, pilot)
+        await pilot.press("s")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        await pilot.press("y")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert [x for x in p.calls_log if x[0] == "unstar"] == [("unstar", "o/r")]
+        assert h.recent_actions()[0].action == "unstar" and h.recent_actions()[0].ok
+
+
+async def test_tui_fork_confirmed_and_failure_not_retried(tmp_path):
+    p = WebProvider(error=None)
+    app, h = tui(p, tmp_path)
+    async with app.run_test() as pilot:
+        await _open_detail(app, pilot)
+        p.error = ProviderError("github", "HTTP 500")
+        await pilot.press("k")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        await pilot.press("y")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert [x for x in p.calls_log if x[0] == "fork"] == [("fork", "o/r")]
+        assert not h.recent_actions()[0].ok
+
+
+async def test_tui_not_signed_in_shows_no_confirmation(tmp_path):
+    from repohub.tui.app import ConfirmWrite
+
+    p = WebProvider(signed_in=False)
+    app, _ = tui(p, tmp_path)
+    async with app.run_test() as pilot:
+        await _open_detail(app, pilot)
+        await pilot.press("s")
+        await app.workers.wait_for_complete()
+        await pilot.pause()
+        assert not isinstance(app.screen, ConfirmWrite)
+
+
+def test_cli_has_no_write_commands():
+    import io
+
+    import repohub.cli as cli
+
+    for cmd in ("star", "unstar", "fork"):
+        with pytest.raises(SystemExit) as e:
+            cli.main([cmd, "github:o/r"], hub_factory=lambda: pytest.fail("no hub"), stdout=io.StringIO(),
+                     stderr=io.StringIO())
+        assert e.value.code == 2

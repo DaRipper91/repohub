@@ -23,6 +23,7 @@ DETAIL_TTL = 3600
 DEGRADED_TTL = 60
 PARTIAL_TTL = 60
 ACCOUNT_TTL = 300
+STARRED_TTL = 60
 MIN_LIMIT_WAIT = 60
 MAX_LIMIT_WAIT = 3600
 REFRESH_CONCURRENCY = 8
@@ -92,6 +93,7 @@ class Hub:
         self.token_sources: dict[str, str] = dict(token_sources or {})  # host -> "env NAME" / "gh CLI"
         self.actions = actions if actions is not None else ActionLog()
         self._clock = clock
+        self._starred: dict[str, tuple[float, bool]] = {}  # in memory only
         self._accounts: dict[str, tuple[float, AccountInfo]] = {}  # in memory only, never on disk
         self._limited_until: dict[str, tuple[float, str]] = {}  # host -> (until, message)
 
@@ -314,19 +316,27 @@ class Hub:
         return provider
 
     def _drop_repo_cache(self, host: str, slug: str) -> None:
+        self._starred.pop(f"{host}@{_domain(host)}:{slug.lower()}", None)
         for kind in ("repo", "detail"):
             self.cache.delete(f"{kind}:{host}@{_domain(host)}:{slug.lower()}")
 
     async def starred(self, host: str, slug: str) -> bool | None:
         """Whether the signed-in account starred the repository; None when unknown (never raises)."""
+        key = f"{host}@{_domain(host)}:{slug.lower()}"
+        hit = self._starred.get(key)
+        if hit is not None and self._clock() < hit[0]:
+            return hit[1]
         try:
             provider = await self._require_signed_in(host, slug)
-            return bool(await with_deadline(host, provider.starred(slug)))
+            state = bool(await with_deadline(host, provider.starred(slug)))
         except RateLimited as e:
-            self._note_rate_limit(host, e)
+            if self._limit_message(host) is None:
+                self._note_rate_limit(host, e)
+            return None
         except Exception:
-            pass
-        return None
+            return None
+        self._starred[key] = (self._clock() + STARRED_TTL, state)
+        return state
 
     async def set_star(self, host: str, slug: str, star: bool) -> None:
         """Star or unstar once. Already starred / not starred counts as success. Logged either way."""

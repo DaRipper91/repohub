@@ -17,4 +17,9 @@
   {% if not a.source and a.status != "not configured" %}<p class="dim">To sign in, set a token variable for this host, then restart.</p>{% endif %}
   </div>
 {% endfor %}
-</div>{% endblock %}
+</div>
+<h3>Recent actions</h3>
+{% if recent %}<table><tr><th>Host</th><th>Repository</th><th>Action</th><th>Result</th></tr>
+{% for e in recent %}<tr><td>{{ e.host }}</td><td>{{ e.slug }}</td><td>{{ e.action }}</td><td>{{ "ok" if e.ok else "failed" }}: {{ e.result }}</td></tr>{% endfor %}</table>
+{% else %}<p class="dim">No star or fork actions yet.</p>{% endif %}
+{% endblock %}
