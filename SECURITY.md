@@ -18,7 +18,12 @@ Helpful details: what you did, what you expected, what happened, the RepoHub ver
 - The CLI's JSON and text output: control and bidirectional characters, JSON escaping, and anything that could print secrets.
 - The personal hosts file (`hosts.yaml`): parsing, size limits, unsafe file types, duplicate keys, and URL validation (https only; no credentials, port, path, IP literals or `localhost`). Also the token-variable rule (extra hosts may only use `REPOHUB_*_TOKEN` variables, so a config file cannot bind an unrelated secret to a host) and the unique-host and unique-token checks.
 - The Forgejo/Gitea provider: token isolation between hosts (a token is sent only to its own host), redirects not being followed, the clone allow-list, and hostile or malformed responses from a configured server (slugs, numbers, URLs and text are validated and cleaned at the boundary).
+- Hostile behaviour by a configured extra host: shadowing a built-in host's entry, off-domain page links, oversized or endless responses (there is a 20-second deadline per host call, a 4 MB response cap and a per-page item cap), and cache poisoning across a repointed host id.
 - Leaking API tokens (logs, error pages, cache, outgoing requests to the wrong host).
+
+## Trust model for extra hosts
+
+A host in `hosts.yaml` is a server you chose. What it reports (names, star counts, URLs) is shown as it says, but it can never override a built-in host's entry on a duplicate `owner/name`, and its repository page links must be on its own domain. The loader rejects IP literals and `localhost` as a simple safeguard; it does **not** stop a DNS name that resolves to a private address, so only add servers you trust. `all` and `both` are reserved host ids.
 
 ## Design notes
 

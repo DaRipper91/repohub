@@ -182,11 +182,19 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
             task = asyncio.create_task(hub.refresh_favorites())
             refresh_tasks.add(task)
             task.add_done_callback(_refresh_done(refresh_tasks))
-        return page(request, "favorites.html", repos=hub.favorites.list())
+        return page(request, "favorites.html", repos=hub.favorites.list(), registered=registry().ids)
 
     @app.post("/favorite", response_class=HTMLResponse)
     async def toggle_favorite(request: Request, host: str = Form(...), slug: str = Form(...), token_field: str = Form("", alias="token")):
         require_token(token_field)
+        if host not in registry():
+            # A host that is no longer configured: a stored favorite can be removed (no network),
+            # but nothing is ever added for it.
+            key = f"{host}:{slug.lower()}"
+            if len(slug) <= 200 and hub.favorites.is_favorite(key):
+                hub.favorites.remove(key)
+                return HTMLResponse('<div class="card"><p class="dim">Removed from favorites.</p></div>')
+            raise HTTPException(404, "not found")
         require_repo(host, slug)
         try:
             repo = (await hub.detail(host, slug)).repo

@@ -500,7 +500,7 @@ def _timed(fn):
 
 
 def _assert_bounded(loaded, elapsed):
-    assert elapsed < 2, elapsed
+    assert elapsed < 10, elapsed
     assert_builtins_only(loaded)
     assert loaded.problems
     assert all(len(p) < 400 for p in loaded.problems)

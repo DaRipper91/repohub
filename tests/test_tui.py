@@ -793,3 +793,35 @@ async def test_unconfigured_host_shelf_status_shows_plain_message(tmp_path):
         await pilot.press("enter")
         await settle(app, pilot)
         assert "gone: host not configured" in text_of(app.query_one("#status"))
+
+
+async def test_d_removes_selected_favorite_without_opening_it_even_for_unconfigured_host(tmp_path):
+    app, hub = make_app(tmp_path)
+    hub.favorites.add(mk("oldforge", "o/gone", 7))
+    hub.favorites.add(mk("github", "o/r", 50))
+    async with app.run_test() as pilot:
+        await pilot.press("ctrl+f")
+        await settle(app, pilot)
+        table = app.query_one(DataTable)
+        assert table.row_count == 2
+        table.focus()
+        keys = [r.value for r in table.rows]
+        idx = keys.index("repo:oldforge:o/gone")
+        table.move_cursor(row=idx)
+        await pilot.pause()
+        await pilot.press("d")
+        await pilot.pause()
+        assert not hub.favorites.is_favorite("oldforge:o/gone") and hub.favorites.is_favorite("github:o/r")
+        assert app.query_one(DataTable).row_count == 1
+        assert not isinstance(app.screen, DetailScreen)
+
+
+async def test_d_outside_favorites_does_nothing(tmp_path):
+    app, hub = make_app(tmp_path)
+    hub.favorites.add(mk("github", "o/r", 50))
+    async with app.run_test() as pilot:
+        await settle(app, pilot)
+        app.query_one(DataTable).focus()
+        await pilot.press("d")
+        await pilot.pause()
+        assert hub.favorites.is_favorite("github:o/r")

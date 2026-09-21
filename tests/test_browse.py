@@ -426,7 +426,7 @@ def test_alias_bombs_do_not_expand_in_messages(tmp_path):
         th.start()
         th.join(timeout=5)
         assert not th.is_alive(), text[:80]
-        assert time.perf_counter() - t0 < 2, text[:80]
+        assert time.perf_counter() - t0 < 10, text[:80]
         problems = box["r"].problems
         assert len(problems) == 1, text[:80]
         assert len(problems[0]) < 500

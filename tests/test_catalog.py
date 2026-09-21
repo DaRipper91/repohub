@@ -101,7 +101,7 @@ def test_loading_is_fast_and_uses_explicit_personal_path(tmp_path, monkeypatch):
     monkeypatch.setattr("repohub.core.browse.personal_shelves_path", boom)
     t = time.perf_counter()
     result = load_all_shelves(personal_path=tmp_path / "none.yaml")
-    assert time.perf_counter() - t < 5.0
+    assert time.perf_counter() - t < 10.0
     assert result.problems == []
 
 

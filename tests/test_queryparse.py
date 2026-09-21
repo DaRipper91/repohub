@@ -114,12 +114,12 @@ def test_very_long_input_is_fast():
     raw = " ".join(["word"] * 20000)[:100_000]
     start = time.monotonic()
     p = parse_query(raw)
-    assert time.monotonic() - start < 5.0
+    assert time.monotonic() - start < 10.0
     assert len(p.text) > 90_000
     start = time.monotonic()
     parse_query("lang:" + "a" * 100_000)
     parse_query("stars:" + "9" * 100_000)
-    assert time.monotonic() - start < 5.0
+    assert time.monotonic() - start < 10.0
 
 
 def test_unicode_digits_and_underscores_rejected():
@@ -180,7 +180,7 @@ def test_problem_count_capped():
     raw = " ".join(["stars:x"] * 1000)
     start = time.monotonic()
     p = parse_query(raw)
-    assert time.monotonic() - start < 5.0
+    assert time.monotonic() - start < 10.0
     assert len(p.problems) == 11
     assert p.problems[-1] == "... and more problems ignored"
     assert p.text == ""

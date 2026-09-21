@@ -1,8 +1,9 @@
 import pytest
 
-from repohub.core.auth import find_tokens
+from repohub.core.auth import find_host_tokens
+from repohub.core.hosts import registry
 from repohub.core.models import SearchFilters
-from repohub.core.providers.base import NotFound, ProviderError, RateLimited, valid_slug
+from repohub.core.providers.base import NotFound, ProviderError, RateLimited
 from repohub.core.providers.forgejo import ForgejoProvider
 from repohub.core.providers.github import GitHubProvider
 from repohub.core.providers.gitlab import GitLabProvider
@@ -11,14 +12,14 @@ pytestmark = pytest.mark.live
 
 
 async def test_github_live_search_and_detail():
-    p = GitHubProvider(find_tokens().github)
+    p = GitHubProvider(find_host_tokens().for_host("github"))
     repos = await p.search("ripgrep", SearchFilters(min_stars=1000))
     assert repos and repos[0].host == "github"
     assert (await p.repo(repos[0].slug)).slug == repos[0].slug
 
 
 async def test_gitlab_live_search():
-    p = GitLabProvider(find_tokens().gitlab)
+    p = GitLabProvider(find_host_tokens().for_host("gitlab"))
     repos = await p.search("wireshark", SearchFilters())
     assert repos and all(r.host == "gitlab" for r in repos)
 
@@ -55,7 +56,7 @@ async def test_codeberg_live_search(codeberg):
     if not repos:
         pytest.skip("Codeberg returned no results for 'terminal'")
     assert all(r.host == "codeberg" for r in repos)
-    assert all(valid_slug(r.slug, "codeberg") for r in repos)
+    assert all(registry().slug_ok("codeberg", r.slug) for r in repos)
     assert all(r.stars >= 0 for r in repos)
 
 

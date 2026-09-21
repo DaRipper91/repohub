@@ -636,3 +636,44 @@ def test_badge_class_is_namespaced_so_an_id_cannot_collide_with_ok(tmp_path):
     html = client.get("/search", params={"q": "x"}).text
     assert 'class="badge host-ok"' in html and 'class="badge ok"' not in html
     assert ".badge.host-codeberg" in client.get("/static/app.css").text
+
+
+# ---- favorites of hosts that are no longer configured -----------------------------------------------
+
+def _gone_setup(tmp_path):
+    hub = make_hub(FakeProvider("github", [mk("github", "o/r", 5)]))
+    hub.favorites.add(mk("oldforge", "o/gone", 7, description="snap desc"))
+    app = create_app(hub, tmp_path, session_token=TOKEN, shelves=[])
+    return TestClient(app, base_url="http://localhost"), hub
+
+
+def test_favorites_page_shows_unconfigured_host_as_unavailable_with_remove(tmp_path):
+    client, hub = _gone_setup(tmp_path)
+    r = client.get("/favorites")
+    assert r.status_code == 200
+    assert "host not configured" in r.text and "o/gone" in r.text and "snap desc" in r.text
+    assert 'href="/repo/oldforge/' not in r.text
+    assert 'hx-post="/favorite"' in r.text and "Remove" in r.text and f'value="{TOKEN}"' in r.text
+
+
+def test_removing_an_unconfigured_favorite_makes_no_provider_call(tmp_path):
+    client, hub = _gone_setup(tmp_path)
+    called = []
+    hub.detail = lambda *a, **k: called.append(a)
+    r = client.post("/favorite", data={"host": "oldforge", "slug": "o/gone", "token": TOKEN})
+    assert r.status_code == 200 and not hub.favorites.is_favorite("oldforge:o/gone") and called == []
+
+
+def test_unconfigured_host_favorite_can_never_be_added(tmp_path):
+    client, hub = _gone_setup(tmp_path)
+    r = client.post("/favorite", data={"host": "oldforge", "slug": "o/other", "token": TOKEN})
+    assert r.status_code == 404 and not hub.favorites.is_favorite("oldforge:o/other")
+    r = client.post("/favorite", data={"host": "nowhere", "slug": "o/x", "token": TOKEN})
+    assert r.status_code == 404
+
+
+def test_removing_an_unconfigured_favorite_still_needs_the_token(tmp_path):
+    client, hub = _gone_setup(tmp_path)
+    assert client.post("/favorite", data={"host": "oldforge", "slug": "o/gone"}).status_code == 403
+    assert client.post("/favorite", data={"host": "oldforge", "slug": "o/gone", "token": "bad"}).status_code == 403
+    assert hub.favorites.is_favorite("oldforge:o/gone")

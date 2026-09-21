@@ -99,3 +99,43 @@ def test_hub_carries_host_problems(tmp_path):
     db = str(tmp_path / "t.db")
     assert Hub({}, Cache(db), Favorites(db)).host_problems == []
     assert Hub({}, Cache(db), Favorites(db), host_problems=["p"]).host_problems == ["p"]
+
+
+def test_build_hub_wires_hosts_tokens_and_problems_offline(tmp_path, monkeypatch):
+    """The one test that calls build_hub(): tmp config/data dirs, no real gh, no network."""
+    import respx
+
+    from repohub.config import build_hub
+
+    cfg, data, empty_bin = tmp_path / "cfg", tmp_path / "data", tmp_path / "bin"
+    for d in (cfg / "repohub", data, empty_bin):
+        d.mkdir(parents=True)
+    (cfg / "repohub" / "hosts.yaml").write_text(
+        "- {id: myforge, kind: forgejo, url: https://git.example.org, token_env: REPOHUB_MYFORGE_TOKEN}\n"
+        "- {id: broken, kind: nope, url: 'http://x'}\n", encoding="utf-8")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(cfg))
+    monkeypatch.setenv("XDG_DATA_HOME", str(data))
+    monkeypatch.setenv("PATH", str(empty_bin))  # the real gh cannot run
+    for var in ("GITHUB_TOKEN", "GH_TOKEN", "GITLAB_TOKEN", "CODEBERG_TOKEN"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("REPOHUB_MYFORGE_TOKEN", "fake-myforge-token")
+
+    # the module-default gh_cli must find nothing when PATH is empty
+    assert not find_host_tokens(HostRegistry(BUILTIN_HOSTS)).has("github")
+
+    with respx.mock(assert_all_mocked=True):  # no routes: any request would fail the test
+        hub = build_hub()
+
+    ps = hub.providers
+    assert list(ps) == ["github", "gitlab", "codeberg", "myforge"]
+    assert isinstance(ps["github"], GitHubProvider) and isinstance(ps["gitlab"], GitLabProvider)
+    assert isinstance(ps["codeberg"], ForgejoProvider) and isinstance(ps["myforge"], ForgejoProvider)
+    assert ps["codeberg"].host == "codeberg"
+    assert str(ps["codeberg"]._client.base_url).rstrip("/") == "https://codeberg.org/api/v1"
+    assert ps["myforge"].host == "myforge"
+    assert str(ps["myforge"]._client.base_url).rstrip("/") == "https://git.example.org/api/v1"
+    assert _auth_headers(ps["github"]) == {} and _auth_headers(ps["gitlab"]) == {}
+    assert _auth_headers(ps["codeberg"]) == {}
+    assert _auth_headers(ps["myforge"]) == {"authorization": "token fake-myforge-token"}
+    assert len(hub.host_problems) == 1 and "entry #1" in hub.host_problems[0]
+    assert (data / "repohub" / "repohub.db").exists()

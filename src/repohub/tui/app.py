@@ -131,7 +131,8 @@ class DetailScreen(Screen):
 class RepoHubApp(App):
     TITLE = "RepoHub"
     BINDINGS = [Binding("ctrl+f", "favorites", "Favorites"), Binding("escape", "home", "Shelves"),
-                Binding("]", "next_page", "Next page"), Binding("[", "prev_page", "Prev page")]
+                Binding("]", "next_page", "Next page"), Binding("[", "prev_page", "Prev page"),
+                Binding("d", "remove_favorite", "Remove favorite")]
 
     def __init__(self, hub, clone_root, shelves=None, cloner=do_clone):
         super().__init__()
@@ -215,6 +216,24 @@ class RepoHubApp(App):
             return
         if self.view == "favorites":
             self._show_repos(self.hub.favorites.list(), "Favorites", view="favorites")
+
+    def action_remove_favorite(self) -> None:
+        """Favorites view only: remove the selected row without opening it (works for unconfigured hosts)."""
+        if self.view != "favorites":
+            return
+        t = self._table()
+        if t.row_count == 0:
+            return
+        try:
+            key = t.coordinate_to_cell_key(t.cursor_coordinate).row_key.value or ""
+        except Exception:
+            return
+        if not key.startswith("repo:"):
+            return
+        _, host, slug = key.split(":", 2)
+        self.hub.favorites.remove(f"{host}:{slug.lower()}")
+        self.notify("Removed from favorites", markup=False)
+        self.refresh_current_view()
 
     def refresh_current_view(self) -> None:
         """Re-render the favorites table from the store (no network), e.g. after unfavoriting."""

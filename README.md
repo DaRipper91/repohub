@@ -109,6 +109,7 @@ Open a repository to read its README and release info. Press `f` to favorite it 
 | `c` then `y` / `n` | Clone: shows the destination, then confirm or cancel |
 | `[` / `]` | Previous or next page of a curated shelf |
 | `Ctrl+F` | Show your favorites |
+| `d` | Remove the selected favorite (favorites view; works for hosts that are no longer configured) |
 | `Esc` | Back from a repository, or return to the shelves |
 | `Ctrl+Q` | Quit |
 
@@ -154,13 +155,13 @@ Add your own servers in `hosts.yaml` in your user config directory (`~/.config/r
 
 - Only `kind: forgejo` is supported (Gitea servers speak the same API).
 - `url` must be `https` with a plain hostname: no credentials, port, path, query or fragment. IP addresses and `localhost` are rejected, and the instance must serve its API at `/api/v1` on the standard https port.
-- `id` uses lowercase letters, digits and `-`, starts with a letter, is at most 20 characters, and cannot reuse a built-in id (`github`, `gitlab`, `codeberg`).
+- `id` uses lowercase letters, digits and `-`, starts with a letter, is at most 20 characters, and cannot reuse a built-in id (`github`, `gitlab`, `codeberg`). `all` and `both` are reserved (they mean every host in `host:` searches).
 - Domains and token variables must be unique across all hosts.
 - `token_env` must start with `REPOHUB_` and end in `_TOKEN` (capital letters, digits and `_`). It defaults to `REPOHUB_<ID>_TOKEN`. This is deliberate: a config file cannot point an unrelated variable such as `AWS_SESSION_TOKEN` at a host.
 - At most 20 extra hosts. The file may be at most 256 KB, must be a regular file, and duplicate YAML keys are rejected.
 - A broken entry is skipped with a message. A broken file is skipped as a whole. The built-in hosts always load.
 
-Problems are shown as a banner on the web home page, in the status line of the terminal app, and as `warning:` lines from `repohub hosts`. Check your setup offline with `repohub hosts`.
+Problems are shown as a banner on the web home page, in the status line of the terminal app, and as `warning:` lines on stderr from every `repohub` command. Check your setup offline with `repohub hosts`.
 
 ### Tokens per host
 
@@ -180,7 +181,14 @@ A token is only ever sent to its own host.
 - Language, minimum stars and recency are filtered client-side, so a page of results can shrink.
 - Clone is allowed only from configured hosts.
 
-An extra host is a server you chose. What it reports (names, star counts, descriptions) is shown as it says, after control characters are stripped.
+### Trust model
+
+An extra host is a server you chose. What it reports (names, star counts, URLs, descriptions) is shown as it says, after control characters are stripped. Some limits still apply:
+
+- It can never override a built-in host's entry on a duplicate `owner/name`: a built-in host's result always wins over an extra host's, whatever the star counts.
+- A repository's page link (`html_url`) is only used when it is on the host's own domain; otherwise RepoHub builds the link from the host's domain. Release download links may point elsewhere (for example a CDN) but must be plain `http` or `https` URLs without credentials.
+- The rejection of IP addresses and `localhost` in `hosts.yaml` is a simple safeguard against typing a local address. It does not stop a DNS name that resolves to a private address, so only add servers you trust.
+- Each host call has a 20-second deadline, and responses from Forgejo hosts are read up to 4 MB and at most one page of results is used. A host that is slow, fails or sends too much shows an error banner while the other hosts' results still appear. When a search is only partly successful, that partial result is cached for 60 seconds so a failing host does not cause repeated requests to the healthy ones.
 
 ## 🔎 Search syntax
 
@@ -241,7 +249,7 @@ Personal shelves go in `shelves.yaml` in your user config directory (`~/.config/
         pushed_at: '2026-09-01'
 ```
 
-- A shelf entry for a host that is no longer configured stays stored. Opening the shelf shows its snapshot with `host not configured` instead of calling anything.
+- Favorites and shelf entries for a host that is no longer configured stay stored. A favorite shows as unavailable (`host not configured`) and can be removed: the web favorites page has a Remove button, and the terminal app's favorites view has the `d` key. A shelf entry for such a host stays stored. Opening the shelf shows its snapshot with `host not configured` instead of calling anything.
 - Quote dates (`'2026-09-20'`). Unquoted dates in `as_of` and `pushed_at` are accepted and converted, but other fields that should be text must be quoted.
 - Limits: the file may be at most 1 MB, with at most 200 shelves and 1000 entries per shelf. Entry numbers in error messages start at 0.
 - A broken personal file never stops RepoHub. The problem is shown (a banner in the web app, the status line in the terminal app, a `warning:` line on stderr in the CLI) and the whole personal file is skipped until you fix it. Only regular files are read.

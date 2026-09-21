@@ -130,3 +130,17 @@ What differs from the plan above, or was added while building it (see `git log`)
 - **Codeberg shelf.** A packaged `Catalog: Codeberg` curated shelf of 18 repositories (`catalog_codeberg.yaml`), the ninth curated shelf.
 - **Where problems show.** A web home banner, the terminal app's status line, and `warning:` lines from `repohub hosts`.
 - **Live tests.** Opt-in Codeberg tests (`pytest -m live`), anonymous, that skip rather than fail on rate limits or an unreachable server.
+
+Fixes after the whole-phase review:
+
+- **Reserved ids.** `all` and `both` cannot be host ids: the hosts loader rejects them with a message and `HostRegistry` raises `ValueError`.
+- **URL hardening.** `safe_url` (all providers) also rejects userinfo and control, format (bidi, zero-width, soft hyphen), separator, surrogate and private-use characters. The Forgejo provider uses a repository's `html_url` only on its own hostname, and builds `https://<domain>/<slug>` otherwise. Release asset URLs are only required to pass `safe_url` (they may live on a CDN).
+- **Web badges.** The badge class is `badge host-<id>`, so a host id such as `ok` cannot pick up the `.badge.ok` style.
+- **CLI.** The table shows host ids up to 20 characters, and every command that reads `hosts.yaml` prints its problems as `warning:` lines on stderr.
+- **Deadlines.** Every provider call in search, repo summaries and detail runs under `HOST_DEADLINE` (20 seconds, in `core/search.py`). A timeout is a per-host `timed out` error; the other hosts' results still show and caller cancellation still propagates.
+- **Forgejo response limits.** Responses are streamed and refused above `MAX_BODY_BYTES` (4 MB, also refused early when `Content-Length` says so), and a search maps at most the requested page size.
+- **Partial results.** A search where some hosts failed and some answered is cached for `PARTIAL_TTL` (60 seconds); when every host failed nothing is cached and the stale fallback works as before.
+- **Cache keys.** Detail, repo-summary and search keys include each host's domain, so repointing a host id does not reuse old entries.
+- **No shadowing.** On a duplicate `owner/name` a built-in host's entry always beats an extra host's; among equals the stars, then registry-rank rule applies.
+- **Favorites of unconfigured hosts** can be removed: a Remove button on the web favorites page (`POST /favorite` removes a stored favorite for an unregistered host without any network call and never adds one), and the `d` key in the terminal favorites view.
+- **Tests.** One safe `build_hub()` wiring test (temp config and data dirs, empty `PATH`, no network); wall-clock thresholds relaxed to 10 seconds; the live Codeberg slug check enforces `owner/name` and the live tests use `find_host_tokens`. `find_tokens` and `Tokens` remain because `tests/test_auth.py` still tests them.
