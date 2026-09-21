@@ -9,7 +9,7 @@
 {% for r, tag, published in items %}
   <div class="card"><a href="/repo/{{ r.host }}/{{ r.slug }}"><div class="name">{{ r.slug }} <span class="badge host-{{ r.host }}">{{ r.host }}</span></div></a>
   <p><strong>{{ tag }}</strong> {% if published %}<span class="dim">{{ published[:10] }}</span>{% endif %}</p>
-  <form method="post" action="/favorites/seen"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="host" value="{{ r.host }}"><input type="hidden" name="slug" value="{{ r.slug }}"><button>Mark as seen</button></form></div>
+  <form method="post" action="/favorites/seen"><input type="hidden" name="token" value="{{ token }}"><input type="hidden" name="host" value="{{ r.host }}"><input type="hidden" name="slug" value="{{ r.slug }}"><input type="hidden" name="tag" value="{{ tag }}"><button>Mark as seen</button></form></div>
 {% endfor %}
 </div>
 {% else %}<p class="dim">Nothing new.</p>{% endif %}

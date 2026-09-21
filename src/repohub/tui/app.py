@@ -169,10 +169,10 @@ class DetailScreen(Screen):
                  r.description, f"Release: {release}"]
         favs = self.hub.favorites
         if favs.is_favorite(r.key):
-            extra = [f"Tags: {', '.join(favs.tags(r.key))}" if favs.tags(r.key) else "",
-                     f"Collections: {', '.join(favs.collections_by_key().get(r.key, []))}" if favs.collections_by_key().get(r.key) else "",
-                     f"Note: {favs.note(r.key)}" if favs.note(r.key) else ""]
-            lines += [x for x in extra if x]
+            tags, colls, note = favs.tags(r.key), favs.collections_by_key().get(r.key, []), favs.note(r.key)
+            lines += [x for x in (f"Tags: {', '.join(tags)}" if tags else "",
+                                  f"Collections: {', '.join(colls)}" if colls else "",
+                                  f"Note: {note}" if note else "") if x]
         aware = getattr(self.app, "awareness", None)
         if aware is not None:
             v = aware.check(r, rel)

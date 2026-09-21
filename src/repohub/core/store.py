@@ -32,8 +32,12 @@ class Favorites:
                 "CREATE TABLE IF NOT EXISTS collection (name TEXT PRIMARY KEY, created REAL NOT NULL)",
                 "CREATE TABLE IF NOT EXISTS collection_item (name TEXT NOT NULL, key TEXT NOT NULL, PRIMARY KEY (name, key))",
                 "CREATE TABLE IF NOT EXISTS fav_release (key TEXT PRIMARY KEY, latest_tag TEXT NOT NULL, "
-                "published_at TEXT, checked_at REAL NOT NULL, seen_tag TEXT)"):
+                "published_at TEXT, checked_at REAL NOT NULL, seen_tag TEXT, seen_published TEXT)"):
                 self._db.execute(ddl)
+            try:  # databases made by version 0.10.0-dev lack the column
+                self._db.execute("ALTER TABLE fav_release ADD COLUMN seen_published TEXT")
+            except sqlite3.OperationalError:
+                pass
             self._db.commit()
 
     def add(self, repo: Repo) -> None:
@@ -203,35 +207,55 @@ class Favorites:
 
     # ---- release tracking: which favorites have a release you have not looked at yet
 
+    def record_no_release(self, key: str) -> None:
+        """A favorite that has no release yet: remember that, so its FIRST release later counts as new."""
+        with self._lock:
+            if self._is_fav(key):
+                self._db.execute("INSERT OR IGNORE INTO fav_release (key, latest_tag, published_at, checked_at, seen_tag, "
+                                 "seen_published) VALUES (?, '', NULL, ?, '', NULL)", (key, self._now()))
+                self._db.commit()
+
     def record_release(self, key: str, tag: str, published_at: str | None) -> None:
-        """Store the latest release seen. The first time, it counts as already seen (no flood of 'new')."""
+        """Store the latest release seen. The first time a favorite is checked, its release counts as already seen."""
         tag = clean_text(tag)[:100]
+        pub = clean_text(published_at)[:40] if published_at else None
         with self._lock:
             if not tag or not self._is_fav(key):
                 return
             row = self._db.execute("SELECT seen_tag FROM fav_release WHERE key = ?", (key,)).fetchone()
-            seen = row[0] if row is not None else tag
-            self._db.execute("INSERT INTO fav_release (key, latest_tag, published_at, checked_at, seen_tag) VALUES (?, ?, ?, ?, ?) "
-                             "ON CONFLICT(key) DO UPDATE SET latest_tag = excluded.latest_tag, "
-                             "published_at = excluded.published_at, checked_at = excluded.checked_at",
-                             (key, tag, clean_text(published_at)[:40] if published_at else None, self._now(), seen))
+            first = row is None
+            self._db.execute(
+                "INSERT INTO fav_release (key, latest_tag, published_at, checked_at, seen_tag, seen_published) "
+                "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET latest_tag = excluded.latest_tag, "
+                "published_at = excluded.published_at, checked_at = excluded.checked_at",
+                (key, tag, pub, self._now(), tag if first else None, pub if first else None))
             self._db.commit()
 
+    _NEW = ("r.latest_tag != '' AND (r.seen_tag IS NULL OR r.seen_tag != r.latest_tag) AND "
+            "((r.published_at IS NOT NULL AND r.seen_published IS NOT NULL AND r.published_at > r.seen_published) "
+            "OR r.published_at IS NULL OR r.seen_published IS NULL)")
+
     def new_releases(self) -> list[tuple[Repo, str, str]]:
-        """(favorite, latest release tag, published date) for releases newer than the last one marked seen."""
+        """(favorite, latest release tag, published date): a release newer than the last one marked seen.
+
+        A release that was deleted or re-tagged so the latest is OLDER than the one seen does not count.
+        """
         with self._lock:
             rows = self._db.execute(
                 "SELECT f.data, r.latest_tag, COALESCE(r.published_at, '') FROM fav_release r JOIN favorites f ON f.key = r.key "
-                "WHERE r.seen_tag IS NULL OR r.seen_tag != r.latest_tag ORDER BY r.published_at DESC, f.key").fetchall()
+                f"WHERE {self._NEW} ORDER BY r.published_at DESC, f.key").fetchall()
         return [(Repo.from_dict(json.loads(d)), t, p) for d, t, p in rows]
 
-    def mark_release_seen(self, key: str | None = None) -> None:
-        """Mark one favorite's latest release (or all of them) as seen."""
+    def mark_release_seen(self, key: str | None = None, tag: str | None = None) -> None:
+        """Mark one favorite's latest release (or all) as seen. With ``tag``, only if that is still the latest."""
         with self._lock:
+            sql = "UPDATE fav_release SET seen_tag = latest_tag, seen_published = published_at"
             if key is None:
-                self._db.execute("UPDATE fav_release SET seen_tag = latest_tag")
+                self._db.execute(sql)
+            elif tag is None:
+                self._db.execute(sql + " WHERE key = ?", (key,))
             else:
-                self._db.execute("UPDATE fav_release SET seen_tag = latest_tag WHERE key = ?", (key,))
+                self._db.execute(sql + " WHERE key = ? AND latest_tag = ?", (key, clean_text(tag)[:100]))
             self._db.commit()
 
     def stale(self, max_age: float) -> list[Repo]:

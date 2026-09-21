@@ -28,6 +28,7 @@ ACCOUNT_TTL = 300
 STARRED_TTL = 60
 RECOMMEND_TTL = 3600
 RELEASE_CHECK_TTL = 1800
+RETRY_AFTER_ERRORS = 60
 MAX_RELEASE_CHECKS = 100
 MIN_LIMIT_WAIT = 60
 MAX_LIMIT_WAIT = 3600
@@ -107,6 +108,7 @@ class Hub:
         self.history = history if history is not None else History()
         self._starred_repos: dict[str, tuple[float, list[Repo]]] = {}  # per host, in memory only
         self._releases_checked: float | None = None
+        self._release_errors: dict[str, str] = {}
         self._rec_memo: dict[str, tuple[float, object]] = {}  # in memory only
         self._clock = clock
         self._starred: dict[str, tuple[float, bool]] = {}  # in memory only
@@ -504,18 +506,19 @@ class Hub:
     async def check_releases(self, force: bool = False) -> dict[str, str]:
         """Look up the latest release of each favorite (at most 100, at most every 30 minutes).
 
-        Returns per-host errors. Hosts in their rate-limit pause are skipped. Nothing is ever written to a host.
+        Returns per-host errors (a throttled call returns the last ones). Hosts in their rate-limit pause are
+        skipped; one failing repository does not stop the others. A check that fails or is cancelled may be
+        retried after a minute. Nothing is ever written to a host.
         """
         now = self._clock()
-        if not force and self._releases_checked is not None and now - self._releases_checked < RELEASE_CHECK_TTL:
-            return {}
-        self._releases_checked = now
+        if not force and self._releases_checked is not None and now < self._releases_checked:
+            return dict(self._release_errors)
         errors: dict[str, str] = {}
         sem = asyncio.Semaphore(REFRESH_CONCURRENCY)
 
         async def one(repo: Repo) -> None:
             provider = self.providers.get(repo.host)
-            if provider is None or repo.host in errors:
+            if provider is None:
                 return
             limited = self._limit_message(repo.host)
             if limited is not None:
@@ -536,6 +539,10 @@ class Hub:
                 return
             if release is not None:
                 self.favorites.record_release(repo.key, release.tag, release.published_at)
+            else:
+                self.favorites.record_no_release(repo.key)
 
-        await asyncio.gather(*(one(r) for r in self.favorites.list()[:MAX_RELEASE_CHECKS]))
+        await asyncio.gather(*(one(r) for r in self.favorites.list()[:MAX_RELEASE_CHECKS]))  # a cancel leaves the throttle unset
+        self._release_errors = dict(errors)
+        self._releases_checked = self._clock() + (RETRY_AFTER_ERRORS if errors else RELEASE_CHECK_TTL)
         return errors

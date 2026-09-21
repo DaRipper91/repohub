@@ -412,3 +412,104 @@ async def test_tui_detail_shows_tags_collections_and_note(tmp_path):
         await pilot.pause()
         text = str(app.screen.query_one("#meta", Static).render())
         assert "Tags: tui" in text and "Collections: Keep" in text and "Note: my note" in text
+
+
+# ---------------------------------------------------------------- review follow-ups
+
+async def test_a_cancelled_check_does_not_block_the_next_one():
+    import asyncio
+
+    class Slow(RelProvider):
+        async def latest_release(self, slug):
+            await asyncio.sleep(30)
+
+    p = Slow({})
+    h = hub_with(p, "o/a")
+    task = asyncio.ensure_future(h.check_releases())
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    p2 = RelProvider({"o/a": Release("v1", "2026-01-01T00:00:00Z", ())})
+    h.providers["github"] = p2
+    await h.check_releases()  # not throttled: the cancelled run never counted
+    assert p2.n == 1
+
+
+async def test_errors_are_retried_after_a_minute_and_repeated_when_throttled():
+    now = [1000.0]
+    p = RelProvider({}, error=ProviderError("github", "network error"))
+    h = hub_with(p, "o/a", clock=lambda: now[0])
+    assert (await h.check_releases())["github"] == "network error"
+    assert (await h.check_releases())["github"] == "network error" and p.n == 1  # throttled, but the error is still shown
+    now[0] += 61
+    await h.check_releases()
+    assert p.n == 2
+
+
+async def test_one_failing_repository_does_not_stop_the_others_on_its_host():
+    class Picky(RelProvider):
+        async def latest_release(self, slug):
+            if slug == "o/a":
+                raise ProviderError("github", "HTTP 500")
+            return Release("v1", "2026-01-01T00:00:00Z", ())
+
+    h = hub_with(Picky({}), "o/a", "o/b", "o/c")
+    errors = await h.check_releases()
+    assert errors == {"github": "HTTP 500"}
+    assert set(h.favorites._db.execute("SELECT key FROM fav_release").fetchall()) == {("github:o/b",), ("github:o/c",)}
+
+
+def test_the_first_release_of_a_favorite_that_had_none_counts_as_new():
+    f = favs_with("o/a")
+    f.record_no_release("github:o/a")
+    assert f.new_releases() == []
+    f.record_release("github:o/a", "v1.0.0", "2026-03-01T00:00:00Z")
+    assert [t for _, t, _ in f.new_releases()] == ["v1.0.0"]
+
+
+def test_a_deleted_or_retagged_latest_release_does_not_show_as_new():
+    f = favs_with("o/a")
+    f.record_release("github:o/a", "v2", "2026-02-01T00:00:00Z")  # baseline: seen
+    f.record_release("github:o/a", "v1", "2026-01-01T00:00:00Z")  # v2 was deleted: the latest is now OLDER
+    assert f.new_releases() == []
+    f.record_release("github:o/a", "v3", "2026-03-01T00:00:00Z")
+    assert [t for _, t, _ in f.new_releases()] == ["v3"]
+
+
+def test_mark_seen_with_a_stale_tag_leaves_a_newer_release_unseen():
+    f = favs_with("o/a")
+    f.record_release("github:o/a", "v1", "2026-01-01T00:00:00Z")
+    f.record_release("github:o/a", "v2", "2026-02-01T00:00:00Z")
+    f.record_release("github:o/a", "v3", "2026-03-01T00:00:00Z")  # landed after the page showing v2 was rendered
+    f.mark_release_seen("github:o/a", "v2")
+    assert [t for _, t, _ in f.new_releases()] == ["v3"]
+    f.mark_release_seen("github:o/a", "v3")
+    assert f.new_releases() == []
+
+
+def test_an_older_database_gets_the_new_column(tmp_path):
+    import sqlite3
+
+    db = str(tmp_path / "old.db")
+    c = sqlite3.connect(db)
+    c.execute("CREATE TABLE fav_release (key TEXT PRIMARY KEY, latest_tag TEXT NOT NULL, published_at TEXT, "
+              "checked_at REAL NOT NULL, seen_tag TEXT)")
+    c.commit()
+    c.close()
+    f = Favorites(db)
+    f.add(mk("github", "o/a", 1))
+    f.record_release("github:o/a", "v1", "2026-01-01T00:00:00Z")
+    f.record_release("github:o/a", "v2", "2026-02-01T00:00:00Z")
+    assert [t for _, t, _ in f.new_releases()] == ["v2"]
+    Favorites(db)  # opening twice is fine
+
+
+def test_the_seen_form_carries_the_displayed_tag(tmp_path):
+    c, h = web(tmp_path, "o/a")
+    h.favorites.record_release("github:o/a", "v1", "2026-01-01T00:00:00Z")
+    h.favorites.record_release("github:o/a", "v2", "2026-02-01T00:00:00Z")
+    assert 'name="tag" value="v2"' in c.get("/favorites/releases").text
+    h.favorites.record_release("github:o/a", "v3", "2026-03-01T00:00:00Z")
+    post(c, "/favorites/seen", host="github", slug="o/a", tag="v2")  # a stale click
+    assert [t for _, t, _ in h.favorites.new_releases()] == ["v3"]

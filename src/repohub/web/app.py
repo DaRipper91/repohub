@@ -386,10 +386,10 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         return page(request, "releases.html", items=hub.favorites.new_releases(), errors=errors)
 
     @app.post("/favorites/seen")
-    async def favorites_seen(host: str = Form(""), slug: str = Form(""), token_field: str = Form("", alias="token")):
+    async def favorites_seen(host: str = Form(""), slug: str = Form(""), tag: str = Form(""), token_field: str = Form("", alias="token")):
         require_token(token_field)
         if host or slug:
-            hub.favorites.mark_release_seen(fav_key(host, slug))
+            hub.favorites.mark_release_seen(fav_key(host, slug), tag or None)
         else:
             hub.favorites.mark_release_seen()
         return RedirectResponse("/favorites/releases", status_code=303)
