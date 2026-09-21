@@ -14,7 +14,7 @@ from repohub.core.textsafe import clean_text
 
 MAX_ROWS = 200
 MAX_RESULT = 200
-ACTIONS = ("star", "unstar", "fork")
+ACTIONS = ("star", "unstar", "fork", "run")
 
 
 @dataclass(frozen=True)

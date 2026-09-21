@@ -15,6 +15,7 @@
       {% else %}<a class="button" href="/star?host={{ r.host }}&slug={{ r.slug | urlencode }}&action=star">☆ Star…</a>{% endif %}
       <a class="button" href="/fork?host={{ r.host }}&slug={{ r.slug | urlencode }}">Fork…</a>
     {% endif %}
+    {% if r.key in cloned %}<a class="button" href="/run/{{ r.host }}/{{ r.slug }}">Install / build…</a>{% endif %}
     <a class="button" href="/clone?host={{ r.host }}&slug={{ r.slug | urlencode }}">Clone…</a>
     {% if r.url.lower().startswith(("http://", "https://")) %}<a class="button" href="{{ r.url }}" rel="noopener noreferrer">Open on {{ r.host }}</a>{% endif %}
   </div>

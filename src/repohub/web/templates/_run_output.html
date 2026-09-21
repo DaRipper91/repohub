@@ -1,0 +1,8 @@
+<div id="out" {% if s.running %}hx-get="/runs/{{ s.id }}/output" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  <p><strong>{{ s.status | capitalize }}</strong>{% if s.exit_code is not none %} (exit code {{ s.exit_code }}){% endif %}</p>
+  {% if s.running %}
+  <form method="post" action="/runs/{{ s.id }}/cancel"><input type="hidden" name="token" value="{{ token }}"><button>Cancel</button></form>
+  {% endif %}
+  {% if s.truncated %}<p class="dim">Output is long: only the last part is shown.</p>{% endif %}
+  <pre class="runlog">{{ s.output }}</pre>
+</div>

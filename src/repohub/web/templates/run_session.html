@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Running · RepoHub{% endblock %}
+{% block body %}<h2>{{ s.command }}</h2>
+<p class="dim">in <code>{{ s.folder }}</code></p>
+<div id="out" hx-get="/runs/{{ s.id }}/output" hx-trigger="load" hx-swap="outerHTML"></div>
+<p><a href="/repo/{{ s.repo_key.split(':', 1)[0] }}/{{ s.repo_key.split(':', 1)[1] }}">Back to the repository</a></p>
+{% endblock %}

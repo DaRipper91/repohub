@@ -11,6 +11,9 @@ from textual.widgets import DataTable, Footer, Header, Input, Markdown, Static
 
 from repohub.core.awareness import Awareness
 from repohub.core.browse import load_all_shelves
+from repohub.core.runner import RunError, Runner
+from repohub.core.runplan import WARNING
+from repohub.core.settings import Settings
 from repohub.core.roots import BUDGET_SECONDS, ScanRoots, discover, home_start
 from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_clone
 from repohub.core.providers.base import ProviderError
@@ -58,9 +61,78 @@ class ConfirmWrite(ModalScreen[bool]):
         self.dismiss(False)
 
 
+class RunScreen(Screen):
+    """Guided install: the fixed steps for a cloned repository; each command needs its own y/n approval."""
+    BINDINGS = [Binding("escape", "back", "Back"), Binding("c", "cancel_run", "Cancel run")]
+
+    def __init__(self, runner, host: str, slug: str):
+        super().__init__()
+        self.runner, self.host, self.slug = runner, host, slug
+        self.plan = None
+        self.session = None
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        yield Static("", id="info", markup=False)
+        yield DataTable(cursor_type="row")
+        yield Static("", id="log", markup=False)
+        yield Footer()
+
+    def on_mount(self) -> None:
+        clone, self.plan = self.runner.find(self.host, self.slug)
+        info = self.query_one("#info", Static)
+        t = self.query_one(DataTable)
+        t.add_columns("Step", "Command")
+        if clone is None:
+            info.update("This repository is not cloned in a known folder. Clone it first (c on its screen).")
+            return
+        if not self.runner.enabled:
+            info.update("Guided install is off. Press F6 on the main screen to turn it on.\n" + WARNING)
+            return
+        info.update(f"{clone.path}\n{WARNING}\nEnter = review and approve one command.")
+        for st in self.plan.steps:
+            t.add_row(Text(st.title), Text(st.text()), key=st.id)
+        if not self.plan.steps:
+            info.update("No standard build command is known for this project.")
+        self.set_interval(0.5, self._tick)
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        event.stop()
+        step = self.plan.step(event.row_key.value or "") if self.plan else None
+        if step is None:
+            return
+        text = f"Run this command in the cloned folder?\n\n  {step.text()}\n\n{WARNING}"
+
+        def done(ok: bool | None) -> None:
+            if not ok:
+                return
+            try:
+                self.session = self.runner.start(self.host, self.slug, step.id, self.plan.digest)
+            except RunError as e:
+                self.notify(str(e), severity="error", markup=False)
+
+        self.app.push_screen(ConfirmWrite(text), done)
+
+    def action_cancel_run(self) -> None:
+        if self.session is not None and self.runner.cancel(self.session.id):
+            self.notify("Cancelling…", markup=False)
+
+    def _tick(self) -> None:
+        s = self.session
+        if s is None:
+            return
+        tail = s.output[-4000:]
+        code = f" (exit {s.exit_code})" if s.exit_code is not None else ""
+        self.query_one("#log", Static).update(f"{s.command}: {s.status}{code}\n{tail}")
+
+
 class DetailScreen(Screen):
     BINDINGS = [Binding("escape", "back", "Back"), Binding("f", "favorite", "Favorite"),
-                Binding("c", "clone", "Clone"), Binding("s", "star", "Star/unstar"), Binding("k", "fork", "Fork")]
+                Binding("c", "clone", "Clone"), Binding("s", "star", "Star/unstar"), Binding("k", "fork", "Fork"),
+                Binding("i", "install", "Install/build")]
 
     def __init__(self, hub, host: str, slug: str, clone_root, cloner):
         super().__init__()
@@ -132,6 +204,12 @@ class DetailScreen(Screen):
             self.notify(f"Could not update favorites: {e}", severity="error", markup=False)
             return
         self._render_meta()
+
+    def action_install(self) -> None:
+        runner = getattr(self.app, "runner", None)
+        if runner is None:
+            return
+        self.app.push_screen(RunScreen(runner, self.host, self.slug))
 
     def action_star(self) -> None:
         if self.detail is None:
@@ -217,16 +295,17 @@ class RepoHubApp(App):
     BINDINGS = [Binding("ctrl+f", "favorites", "Favorites"), Binding("escape", "home", "Shelves"),
                 Binding("]", "next_page", "Next page"), Binding("[", "prev_page", "Prev page"),
                 Binding("d", "remove_favorite", "Remove favorite"), Binding("f2", "accounts", "Accounts"), Binding("f3", "history", "History on/off"),
-                Binding("f4", "clear_history", "Clear history"), Binding("f5", "folders", "Folders"),
+                Binding("f4", "clear_history", "Clear history"), Binding("f5", "folders", "Folders"), Binding("f6", "guided", "Guided install on/off"),
                 Binding("s", "scan_home", "Scan home", show=False), Binding("w", "scan_system", "Scan all", show=False), Binding("a", "accounts", "Accounts", show=False)]
 
-    def __init__(self, hub, clone_root, shelves=None, cloner=do_clone, awareness=None, roots=None):
+    def __init__(self, hub, clone_root, shelves=None, cloner=do_clone, awareness=None, roots=None, runner=None):
         super().__init__()
         self.hub, self.clone_root, self.cloner = hub, clone_root, cloner
         self.awareness = awareness if awareness is not None else Awareness(clone_root)
         self.roots = roots if roots is not None else ScanRoots()
         self.scan_report = None  # the last folder scan: in memory only
         self._scanning = False
+        self.runner = runner if runner is not None else Runner(self.awareness, Settings(), hub.actions)
         if shelves is None:
             loaded = load_all_shelves()
             self.shelves, self.shelf_problems = loaded.shelves, list(loaded.problems)
@@ -278,7 +357,7 @@ class RepoHubApp(App):
         self._status(status)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
-        if action in ("clear_history", "history", "folders") and len(self.screen_stack) > 1:
+        if action in ("clear_history", "history", "folders", "guided") and len(self.screen_stack) > 1:
             return False
         if action in ("scan_home", "scan_system"):  # only on the folders view of the main screen
             return self.view == "folders" and len(self.screen_stack) == 1
@@ -341,6 +420,20 @@ class RepoHubApp(App):
             notes.append("No suggestions found.")
         notes += [f"{h}: {m}" for h, m in result.errors.items()]
         self._status("  ".join(notes))
+
+    def action_guided(self) -> None:
+        if self.runner.enabled:
+            self.runner.settings.set("guided_run", False)
+            self.notify("Guided install is off", markup=False)
+            return
+
+        def done(ok: bool | None) -> None:
+            if ok:
+                self.runner.settings.set("guided_run", True)
+                self.notify("Guided install is on. Every command still needs your approval.", markup=False)
+
+        self.push_screen(ConfirmWrite("Turn on guided install?\nRepoHub will propose standard build commands for cloned "
+                                      "repositories and run one only after you approve it.\n" + WARNING), done)
 
     def action_history(self) -> None:
         on = not self.hub.history.enabled

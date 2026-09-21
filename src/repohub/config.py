@@ -50,3 +50,12 @@ def build_hub() -> Hub:
     providers = make_providers(reg, tokens)
     return Hub(providers, Cache(db), Favorites(db), host_problems=problems, token_sources=sources,
                actions=ActionLog(db), history=History(db))
+
+
+def make_settings():
+    """The on/off switches, in the same local database as everything else."""
+    from repohub.core.settings import Settings
+
+    data = Path(user_data_dir("repohub"))
+    data.mkdir(parents=True, exist_ok=True)
+    return Settings(str(data / "repohub.db"))

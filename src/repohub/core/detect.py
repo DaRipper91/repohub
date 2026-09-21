@@ -27,3 +27,18 @@ def detect_project(folder: Path | str) -> list[str]:
     except OSError:
         return []
     return sorted(kinds)
+
+
+def marker_files(folder: Path | str) -> frozenset[str]:
+    """The known build-file names present at the top level of ``folder`` (names only; nothing is read)."""
+    found: set[str] = set()
+    try:
+        with os.scandir(folder) as it:
+            for n, entry in enumerate(it):
+                if n >= MAX_ENTRIES:
+                    break
+                if entry.name in MARKERS and not entry.is_symlink():
+                    found.add(entry.name)
+    except OSError:
+        return frozenset()
+    return frozenset(found)

@@ -16,3 +16,4 @@ main{max-width:1100px;margin:0 auto;padding:16px}h1,h2,h3{color:var(--lav)}.grid
 .checks{list-style:none;padding:0;margin:.4em 0}.checks li{margin:.2em 0}.check-ok span[aria-hidden]{color:var(--mint)}.check-no span[aria-hidden],.check-warn span[aria-hidden]{color:var(--peach)}
 .verdict-likely{color:var(--mint)}.verdict-maybe,.verdict-needs-setup{color:var(--peach)}.verdict-unlikely{color:#f38ba8}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+pre.runlog{background:var(--panel);padding:10px;border-radius:8px;overflow:auto;max-height:60vh;white-space:pre-wrap;word-break:break-word}.steps li{margin:1em 0}

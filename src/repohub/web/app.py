@@ -17,6 +17,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from repohub.core.awareness import Awareness
+from repohub.core.runplan import WARNING
+from repohub.core.runner import RunError, Runner
+from repohub.core.settings import Settings
 from repohub.core.roots import BUDGET_SECONDS, ScanRoots, discover, home_start
 from repohub.core.browse import load_all_shelves
 from repohub.core.clone import CloneError, clone as do_clone, clone_url, plan_clone
@@ -73,9 +76,10 @@ SCAN_TIMEOUT = BUDGET_SECONDS + 15  # hard limit around a scan that a slow disk 
 
 def create_app(hub, clone_root, session_token: str | None = None, shelves=None, cloner=do_clone,
                allowed_hosts=("127.0.0.1", "localhost"), awareness: Awareness | None = None,
-               roots: ScanRoots | None = None) -> FastAPI:
+               roots: ScanRoots | None = None, runner: Runner | None = None) -> FastAPI:
     aware = awareness if awareness is not None else Awareness(clone_root)
     scan_roots = roots if roots is not None else ScanRoots()
+    guided = runner if runner is not None else Runner(aware, Settings(), hub.actions)
     folder_state: dict = {"report": None, "running": False}  # the last scan lives in memory only
     token = session_token or secrets.token_urlsafe(32)
     if shelves is None:
@@ -235,6 +239,57 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         aware.invalidate()
         return RedirectResponse("/folders", status_code=303)
 
+    # ---- guided install and run: opt-in, one approved command at a time (see docs/plans/2026-09-22-phase7-design.md)
+
+    @app.get("/run/{host}/{slug:path}", response_class=HTMLResponse)
+    async def run_plan_page(request: Request, host: str, slug: str):
+        require_repo(host, slug)
+        clone, plan = await run_in_threadpool(guided.find, host, slug)
+        return page(request, "run_plan.html", host=host, slug=slug, clone=clone, plan=plan, enabled=guided.enabled,
+                    current=guided.current(), warning=WARNING)
+
+    @app.post("/runsetting")
+    async def run_setting(host: str = Form(...), slug: str = Form(...), action: str = Form(...),
+                          token_field: str = Form("", alias="token")):
+        require_token(token_field)
+        require_repo(host, slug)
+        if action not in ("on", "off"):
+            raise HTTPException(404, "not found")
+        guided.settings.set("guided_run", action == "on")
+        return RedirectResponse(f"/run/{host}/{slug}", status_code=303)
+
+    @app.post("/runstart")
+    async def run_start(request: Request, host: str = Form(...), slug: str = Form(...), step: str = Form(...),
+                        digest: str = Form(...), token_field: str = Form("", alias="token")):
+        require_token(token_field)
+        require_repo(host, slug)
+        try:
+            session = await run_in_threadpool(guided.start, host, slug, step, digest)
+        except RunError as e:
+            return page(request, "_message.html", status=409, message=str(e))
+        return RedirectResponse(f"/runs/{session.id}", status_code=303)
+
+    def find_session(session_id: str):
+        session = guided.get(session_id)
+        if session is None:
+            raise HTTPException(404, "not found")
+        return session
+
+    @app.get("/runs/{session_id}", response_class=HTMLResponse)
+    async def run_session_page(request: Request, session_id: str):
+        return page(request, "run_session.html", s=find_session(session_id), warning=WARNING)
+
+    @app.get("/runs/{session_id}/output", response_class=HTMLResponse)
+    async def run_output(request: Request, session_id: str):
+        return page(request, "_run_output.html", s=find_session(session_id))
+
+    @app.post("/runs/{session_id}/cancel")
+    async def run_cancel(session_id: str, token_field: str = Form("", alias="token")):
+        require_token(token_field)
+        find_session(session_id)
+        guided.cancel(session_id)
+        return RedirectResponse(f"/runs/{session_id}", status_code=303)
+
     @app.get("/recommended", response_class=HTMLResponse)
     async def recommended(request: Request):
         result = await hub.recommend(6)
@@ -386,7 +441,7 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
 def main(argv: list[str] | None = None) -> None:
     import uvicorn
 
-    from repohub.config import build_hub, clone_root
+    from repohub.config import build_hub, clone_root, make_settings
 
     parser = argparse.ArgumentParser(prog="repohub-web", description="RepoHub web app (binds to loopback by default)")
     parser.add_argument("--host", default="127.0.0.1")
@@ -395,5 +450,7 @@ def main(argv: list[str] | None = None) -> None:
     if args.host not in ("127.0.0.1", "localhost"):
         print("WARNING: binding to a non-loopback address exposes clone and favorites to your network.")
     roots = ScanRoots()
-    uvicorn.run(create_app(build_hub(), clone_root(), roots=roots,
-                           awareness=Awareness(clone_root(), extra_roots=roots.list)), host=args.host, port=args.port)
+    hub = build_hub()
+    aware = Awareness(clone_root(), extra_roots=roots.list)
+    uvicorn.run(create_app(hub, clone_root(), roots=roots, awareness=aware,
+                           runner=Runner(aware, make_settings(), hub.actions)), host=args.host, port=args.port)

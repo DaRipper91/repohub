@@ -113,6 +113,13 @@ def _build_parser() -> argparse.ArgumentParser:
                                     "and reads each one's .git/config for its origin URL.")
     cl.add_argument("--json", action="store_true")
 
+    pl = sub.add_parser("plan", help="show the build commands RepoHub would propose for a cloned repository (never runs them)",
+                        description="Prints the fixed, standard build steps for the project type found in the cloned "
+                                    "folder. The CLI never runs them: use the web or terminal app, which ask you to "
+                                    "approve each command.")
+    pl.add_argument("repo", metavar="HOST:OWNER/NAME")
+    pl.add_argument("--json", action="store_true")
+
     ro = sub.add_parser("roots", help="show the folders RepoHub looks in for clones; --scan suggests more (read-only)",
                         description="Lists the clone folder and any extra folders picked in the web or terminal app. "
                                     "--scan looks for folders that contain git clones (home folder, or --system for the whole "
@@ -442,6 +449,34 @@ def _cmd_cloned(args, hub, o: _Out) -> int:
     return EXIT_OK
 
 
+def _cmd_plan(args, hub, o: _Out) -> int:
+    from repohub.core.runplan import WARNING, build_plan
+
+    parsed = _valid_repo_arg(args.repo)
+    if parsed is None:
+        o.err("error: repository must look like HOST:OWNER/NAME with a configured host (see 'repohub hosts')")
+        return EXIT_USAGE
+    host, slug = parsed
+    clone = _awareness().cloned(refresh=True).get(f"{host}:{slug.lower()}")
+    if clone is None:
+        o.err(f"error: {host}:{_cell(slug)} is not cloned in a known folder (see 'repohub cloned')")
+        return EXIT_ERROR
+    plan = build_plan(clone.path)
+    if args.json:
+        o.json({"schema_version": SCHEMA_VERSION, "repo": f"{host}:{slug}", "folder": _cell(clone.path),
+                "steps": [{"id": st.id, "title": st.title, "command": st.text()} for st in plan.steps],
+                "warning": WARNING})
+        return EXIT_OK
+    o.out(f"{_cell(slug)} in {_cell(clone.path)}")
+    if plan.steps:
+        for n, st in enumerate(plan.steps, 1):
+            o.out(f"  {n}. {_cell(st.title)}: {_cell(st.text())}")
+    else:
+        o.out("  no standard build command is known for this project")
+    o.err("note: proposal only. " + WARNING + " Run steps from the web or terminal app.")
+    return EXIT_OK
+
+
 def _cmd_roots(args, hub, o: _Out) -> int:
     from repohub.config import clone_root
     from repohub.core.roots import ScanRoots, discover, home_start
@@ -526,7 +561,7 @@ def _cmd_accounts(args, hub, o: _Out) -> int:
 _COMMANDS = {"search": _cmd_search, "repo": _cmd_repo, "shelves": _cmd_shelves,
              "shelf": _cmd_shelf, "favorites": _cmd_favorites, "accounts": _cmd_accounts,
              "recommend": _cmd_recommend, "similar": _cmd_similar,
-             "cloned": _cmd_cloned, "check": _cmd_check, "roots": _cmd_roots}
+             "cloned": _cmd_cloned, "check": _cmd_check, "roots": _cmd_roots, "plan": _cmd_plan}
 
 
 def main(argv: list[str] | None = None, *, hub_factory: Callable | None = None,
@@ -562,6 +597,8 @@ def main(argv: list[str] | None = None, *, hub_factory: Callable | None = None,
             return _cmd_cloned(args, None, o)  # no hub, no network
         if args.command == "roots":
             return _cmd_roots(args, None, o)  # no hub, no network
+        if args.command == "plan":
+            return _cmd_plan(args, None, o)  # no hub, no network, nothing run
         if hub_factory is None:
             from repohub.config import build_hub as hub_factory
         hub = hub_factory() if args.command != "shelves" else None
