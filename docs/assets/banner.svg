@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="320" viewBox="0 0 1280 320" role="img" aria-labelledby="t d">
+  <title id="t">RepoHub</title>
+  <desc id="d">RepoHub: browse GitHub and GitLab like an app store</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e1e2e"/>
+      <stop offset="1" stop-color="#2a2a3d"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#b4befe"/>
+      <stop offset="0.55" stop-color="#f5c2e7"/>
+      <stop offset="1" stop-color="#89dceb"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#34344d"/>
+      <stop offset="1" stop-color="#2a2a3d"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="320" rx="18" fill="url(#bg)"/>
+
+  <!-- decorative store shelf of cards -->
+  <g opacity="0.95">
+    <rect x="86"  y="86" width="150" height="148" rx="14" fill="url(#card)" stroke="#3f3f5e"/>
+    <rect x="252" y="86" width="150" height="148" rx="14" fill="url(#card)" stroke="#3f3f5e"/>
+    <rect x="418" y="86" width="150" height="148" rx="14" fill="url(#card)" stroke="#b4befe" stroke-width="2"/>
+    <g fill="#f5c2e7">
+      <rect x="104" y="104" width="76" height="9" rx="4.5"/>
+      <rect x="270" y="104" width="62" height="9" rx="4.5"/>
+      <rect x="436" y="104" width="88" height="9" rx="4.5"/>
+    </g>
+    <g fill="#585b7a">
+      <rect x="104" y="128" width="112" height="7" rx="3.5"/><rect x="104" y="144" width="96" height="7" rx="3.5"/><rect x="104" y="160" width="70" height="7" rx="3.5"/>
+      <rect x="270" y="128" width="112" height="7" rx="3.5"/><rect x="270" y="144" width="88" height="7" rx="3.5"/><rect x="270" y="160" width="100" height="7" rx="3.5"/>
+      <rect x="436" y="128" width="112" height="7" rx="3.5"/><rect x="436" y="144" width="104" height="7" rx="3.5"/><rect x="436" y="160" width="60" height="7" rx="3.5"/>
+    </g>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13">
+      <text x="104" y="210" fill="#9ca3c4">★ 12.4k · Rust</text>
+      <text x="270" y="210" fill="#9ca3c4">★ 8.1k · Go</text>
+      <text x="436" y="210" fill="#a6e3a1">arm64 ✓</text>
+    </g>
+  </g>
+
+  <!-- title block -->
+  <g font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+    <text x="640" y="150" font-size="84" font-weight="800" fill="url(#title)" letter-spacing="1">RepoHub</text>
+    <text x="642" y="196" font-size="27" fill="#cdd6f4">Browse GitHub and GitLab like an app store.</text>
+    <g font-size="17" font-weight="600">
+      <rect x="642" y="222" width="104" height="32" rx="16" fill="#3a3a55"/><text x="694" y="244" fill="#b4befe" text-anchor="middle">web app</text>
+      <rect x="760" y="222" width="122" height="32" rx="16" fill="#3a3a55"/><text x="821" y="244" fill="#f5c2e7" text-anchor="middle">terminal app</text>
+      <rect x="896" y="222" width="104" height="32" rx="16" fill="#3a3a55"/><text x="948" y="244" fill="#89dceb" text-anchor="middle">local-first</text>
+    </g>
+  </g>
+</svg>
