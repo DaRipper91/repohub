@@ -95,6 +95,12 @@ def _build_parser() -> argparse.ArgumentParser:
                         description="List configured hosts and whether a token is present. "
                                     "Token values are never shown.")
     ho.add_argument("--json", action="store_true")
+
+    ac = sub.add_parser("accounts", help="show who you are signed in as on each host (read-only)",
+                        description="For each host: the account, where its token came from (never the token), "
+                                    "its scopes and rate limit where the host reports them. "
+                                    "Uses your existing sign-ins (env variables, gh CLI); stores nothing.")
+    ac.add_argument("--json", action="store_true")
     return p
 
 
@@ -346,8 +352,28 @@ def _cmd_hosts(args, hub, o: _Out, problems: list[str] | None = None, gh_cli: Ca
     return EXIT_OK
 
 
+def _rate_text(rate) -> str:
+    return f"{rate.remaining}/{rate.limit}" if rate else "unknown"
+
+
+def _cmd_accounts(args, hub, o: _Out) -> int:
+    infos = asyncio.run(hub.accounts())
+    if args.json:
+        o.json({"schema_version": SCHEMA_VERSION, "accounts": [i.to_dict() for i in infos]})
+    else:
+        o.out(_table(["host", "status", "account", "token from", "scopes", "rate left", "star/fork"],
+                     [[i.host, i.status, i.login or "-", i.source or "-",
+                       ",".join(i.scopes) if i.scopes else ("unknown" if i.scopes is None else "none"),
+                       _rate_text(i.rate), i.can_star_fork] for i in infos]))
+        for i in infos:
+            if i.message or i.hint:
+                o.err(f"{_cell(i.host)}: {_msg(i.message or i.hint)}")
+    good = [i for i in infos if i.status in ("signed in", "not signed in")]
+    return EXIT_OK if len(good) == len(infos) else (EXIT_PARTIAL if good else EXIT_ERROR)
+
+
 _COMMANDS = {"search": _cmd_search, "repo": _cmd_repo, "shelves": _cmd_shelves,
-             "shelf": _cmd_shelf, "favorites": _cmd_favorites}
+             "shelf": _cmd_shelf, "favorites": _cmd_favorites, "accounts": _cmd_accounts}
 
 
 def main(argv: list[str] | None = None, *, hub_factory: Callable | None = None,

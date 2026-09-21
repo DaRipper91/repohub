@@ -1,7 +1,7 @@
 # Design: other hosts, accounts, star and fork, recommendations (Phases 2 to 5)
 
 Date: 2026-09-21
-Status: Approved design. Phase 2 (other hosts) is implemented (v0.3.0); Phase 3 is next, then Phases 4 and 5, each with its own plan and reviews.
+Status: Approved design. Phase 2 (other hosts) is implemented (v0.3.0); Phase 3 (accounts, v0.4.0) is implemented; Phases 4 and 5 are next, each with its own plan and reviews.
 
 ## Where this comes from
 
@@ -23,7 +23,7 @@ After Phase 1 (v0.2.0) the owner asked to work next on the README's "Not include
 |---|---|---|
 | v1, 1 | Search, shelves, favorites, safe clone, web + terminal apps; filters and sorting, curated shelves, CLI | Done (v0.2.0) |
 | **2. Other hosts** | Host registry; Forgejo/Gitea provider; Codeberg built in; extra instances in a config file | Done (v0.3.0) |
-| **3. Accounts and login** | Existing sign-ins per host; an Accounts page (who, token source, scopes, rate limit) | Next |
+| **3. Accounts and login** | Existing sign-ins per host; an Accounts page (who, token source, scopes, rate limit) | Done (v0.4.0) |
 | **4. Star and fork** | Star, unstar and fork from the web and terminal apps, always confirmed, with a local action log | Planned |
 | **5. Recommendations** | Favorites, stars, opt-in history and "similar repos", all computed locally | Planned |
 | 6. Machine awareness | "Already cloned" badges (scan the clone folder only), "Can I run this here?" panel, project detector | Paused |

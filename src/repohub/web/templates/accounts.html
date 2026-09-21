@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Accounts · RepoHub{% endblock %}
+{% block body %}<h2>Accounts</h2>
+<p class="dim">RepoHub uses the sign-ins you already have (environment variables and the gh CLI). It stores no tokens and this page only reads.</p>
+<div class="grid">
+{% for a in accounts %}
+  <div class="card"><div class="name">{{ a.name }} <span class="badge host-{{ a.host }}">{{ a.host }}</span></div>
+  <p>{{ a.status }}{% if a.login %} as <strong>{{ a.login }}</strong>{% endif %}</p>
+  <div class="meta">
+    Token from: {{ a.source or "none found" }}<br>
+    Scopes: {% if a.scopes is none %}not reported{% elif a.scopes %}{{ a.scopes | join(", ") }}{% else %}none{% endif %}<br>
+    Rate limit: {% if a.rate %}{{ a.rate.remaining }} of {{ a.rate.limit }} left{% else %}not reported{% endif %}<br>
+    Star and fork: {{ a.can_star_fork }}
+  </div>
+  {% if a.message %}<p class="dim">{{ a.message }}</p>{% endif %}
+  {% if a.hint %}<p class="dim">{{ a.hint }}</p>{% endif %}
+  {% if not a.source and a.status != "not configured" %}<p class="dim">To sign in, set a token variable for this host, then restart.</p>{% endif %}
+  </div>
+{% endfor %}
+</div>{% endblock %}

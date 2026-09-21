@@ -132,7 +132,7 @@ class RepoHubApp(App):
     TITLE = "RepoHub"
     BINDINGS = [Binding("ctrl+f", "favorites", "Favorites"), Binding("escape", "home", "Shelves"),
                 Binding("]", "next_page", "Next page"), Binding("[", "prev_page", "Prev page"),
-                Binding("d", "remove_favorite", "Remove favorite")]
+                Binding("d", "remove_favorite", "Remove favorite"), Binding("f2", "accounts", "Accounts"), Binding("a", "accounts", "Accounts", show=False)]
 
     def __init__(self, hub, clone_root, shelves=None, cloner=do_clone):
         super().__init__()
@@ -183,6 +183,8 @@ class RepoHubApp(App):
         self._status(status)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool | None:
+        if action == "accounts" and len(self.screen_stack) > 1:  # not from the detail or confirm screens
+            return False
         if action in ("next_page", "prev_page"):
             # only on the main screen, in a curated shelf view, and not at the relevant end
             if self.view != "shelf" or len(self.screen_stack) > 1:
@@ -216,6 +218,30 @@ class RepoHubApp(App):
             return
         if self.view == "favorites":
             self._show_repos(self.hub.favorites.list(), "Favorites", view="favorites")
+
+    def action_accounts(self) -> None:
+        self._status("Checking accounts…")
+        self.run_worker(self._show_accounts(), exclusive=True)
+
+    async def _show_accounts(self) -> None:
+        try:
+            infos = await self.hub.accounts()
+        except Exception as e:
+            self._status(f"Could not load accounts: {e}")
+            self.notify(f"Could not load accounts: {e}", severity="error", markup=False)
+            return
+        self.view = "accounts"
+        self.refresh_bindings()
+        t = self._table()
+        t.clear(columns=True)
+        t.add_columns("Host", "Status", "Account", "Token from", "Scopes", "Rate left", "Star/fork")
+        for i in infos:
+            scopes = "not reported" if i.scopes is None else (", ".join(i.scopes) or "none")
+            rate = f"{i.rate.remaining}/{i.rate.limit}" if i.rate else "n/a"
+            t.add_row(Text(i.host), Text(i.status), Text(i.login or "-"), Text(i.source or "-"),
+                      Text(scopes), Text(rate), Text(i.can_star_fork), key=f"account:{i.host}")
+        notes = [f"{i.host}: {i.message or i.hint}" for i in infos if i.message or i.hint]
+        self._status("Accounts (read-only; nothing is stored).  " + "  ".join(notes))
 
     def action_remove_favorite(self) -> None:
         """Favorites view only: remove the selected row without opening it (works for unconfigured hosts)."""

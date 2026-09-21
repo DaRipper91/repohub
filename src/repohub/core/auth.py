@@ -87,6 +87,29 @@ def check_token_env_unique(reg: HostRegistry) -> None:
                 raise ValueError(f"token variable {var} is listed by both {owner[var]!r} and {spec.id!r}")
 
 
+GH_CLI_SOURCE = "gh CLI"
+
+
+def _resolve(reg: HostRegistry, env: Mapping[str, str], gh_cli: Callable[[], str | None]) -> dict[str, tuple[str, str]]:
+    """Per host: (token, source), where source is the variable NAME or "gh CLI", never the value."""
+    check_token_env_unique(reg)
+    found: dict[str, tuple[str, str]] = {}
+    for spec in reg.specs:
+        hit: tuple[str, str] | None = None
+        for var in spec.token_env:
+            value = (env.get(var) or "").strip()
+            if value:
+                hit = (value, f"env {var}")
+                break
+        if hit is None and spec.id == "github":
+            value = (gh_cli() or "").strip()
+            if value:
+                hit = (value, GH_CLI_SOURCE)
+        if hit:
+            found[spec.id] = hit
+    return found
+
+
 def find_host_tokens(reg: HostRegistry | None = None, env: Mapping[str, str] | None = None,
                      gh_cli: Callable[[], str | None] = _gh_cli_token) -> HostTokens:
     """Per registered host: the first non-empty (stripped) value of its own token variables.
@@ -95,17 +118,22 @@ def find_host_tokens(reg: HostRegistry | None = None, env: Mapping[str, str] | N
     fallback for the ``github`` host alone and is not called when an env value exists.
     """
     reg = registry() if reg is None else reg
-    check_token_env_unique(reg)
     env = os.environ if env is None else env
-    found: dict[str, str] = {}
-    for spec in reg.specs:
-        value = None
-        for var in spec.token_env:
-            value = (env.get(var) or "").strip() or None
-            if value:
-                break
-        if value is None and spec.id == "github":
-            value = (gh_cli() or "").strip() or None
-        if value:
-            found[spec.id] = value
-    return HostTokens(found)
+    return HostTokens({h: v for h, (v, _) in _resolve(reg, env, gh_cli).items()})
+
+
+def find_token_sources(reg: HostRegistry | None = None, env: Mapping[str, str] | None = None,
+                       gh_cli: Callable[[], str | None] = _gh_cli_token) -> dict[str, str]:
+    """Where each host's token came from ("env GITLAB_TOKEN" or "gh CLI"); hosts without one are absent."""
+    reg = registry() if reg is None else reg
+    env = os.environ if env is None else env
+    return {h: src for h, (_, src) in _resolve(reg, env, gh_cli).items()}
+
+
+def find_host_tokens_and_sources(reg: HostRegistry | None = None, env: Mapping[str, str] | None = None,
+                                 gh_cli: Callable[[], str | None] = _gh_cli_token) -> tuple[HostTokens, dict[str, str]]:
+    """Both in one pass, so the GitHub CLI is asked at most once."""
+    reg = registry() if reg is None else reg
+    env = os.environ if env is None else env
+    found = _resolve(reg, env, gh_cli)
+    return HostTokens({h: v for h, (v, _) in found.items()}), {h: src for h, (_, src) in found.items()}

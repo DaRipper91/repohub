@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import httpx
 
+from repohub.core.accounts import ProviderAccount, clean_login, clean_scopes, parse_rate
 from repohub.core.models import Asset, Release, Repo, SearchFilters, parse_arch
 from repohub.core.textsafe import clean_text
 from repohub.core.providers.base import NotFound, ProviderError, RateLimited, guard_parse, safe_url, valid_slug
@@ -113,3 +114,15 @@ class GitHubProvider:
         assets = tuple(Asset(clean_text(a["name"]), a.get("size", 0), a["browser_download_url"], parse_arch(a["name"]))
                        for a in j.get("assets", []))
         return Release(clean_text(j["tag_name"]), j.get("published_at"), assets)
+
+    @guard_parse
+    async def account(self) -> ProviderAccount | None:
+        """Who the token belongs to (None when there is no token). Classic tokens list their scopes."""
+        if "Authorization" not in self._client.headers:
+            return None
+        resp = await self._get("/user")
+        if resp is None:
+            raise ProviderError(self.host, "unexpected response")
+        listed = resp.headers.get("x-oauth-scopes")  # absent for fine-grained tokens
+        scopes = None if listed is None else clean_scopes(s.strip() for s in listed.split(","))
+        return ProviderAccount(clean_login(resp.json()["login"]), scopes, parse_rate(resp.headers, "x-ratelimit"))

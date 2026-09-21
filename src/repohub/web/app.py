@@ -176,6 +176,10 @@ def create_app(hub, clone_root, session_token: str | None = None, shelves=None, 
         return page(request, "repo.html", d=d, readme_html=render_markdown(d.readme) if d.readme else "",
                     is_fav=hub.favorites.is_favorite(d.repo.key))
 
+    @app.get("/accounts", response_class=HTMLResponse)
+    async def accounts_page(request: Request):
+        return page(request, "accounts.html", accounts=await hub.accounts())
+
     @app.get("/favorites", response_class=HTMLResponse)
     async def favorites_page(request: Request):
         if not refresh_tasks:  # one background refresh at a time; the page never waits for the network

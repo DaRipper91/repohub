@@ -5,6 +5,7 @@ from urllib.parse import quote
 
 import httpx
 
+from repohub.core.accounts import ProviderAccount, clean_login, clean_scopes, parse_rate
 from repohub.core.models import Asset, Release, Repo, SearchFilters, parse_arch
 from repohub.core.textsafe import clean_text
 from repohub.core.providers.base import NotFound, ProviderError, RateLimited, guard_parse, safe_url, valid_slug
@@ -126,3 +127,21 @@ class GitLabProvider:
             for a in (j.get("assets") or {}).get("links", [])
         )
         return Release(clean_text(j["tag_name"]), j.get("released_at"), assets)
+
+    @guard_parse
+    async def account(self) -> ProviderAccount | None:
+        """Who the token belongs to and its scopes (None when there is no token)."""
+        if "PRIVATE-TOKEN" not in self._client.headers:
+            return None
+        resp = await self._get("/user")
+        if resp is None:
+            raise ProviderError(self.host, "unexpected response")
+        login, rate = clean_login(resp.json()["username"]), parse_rate(resp.headers, "ratelimit")
+        scopes = None
+        try:  # only personal access tokens answer this; anything else leaves the scopes unknown
+            own = await self._send("/personal_access_tokens/self", None)  # never drops the token
+            if own.status_code == 200 and isinstance(own.json().get("scopes"), list):
+                scopes = clean_scopes(own.json()["scopes"])
+        except (ProviderError, ValueError, AttributeError):
+            pass
+        return ProviderAccount(login, scopes, rate)

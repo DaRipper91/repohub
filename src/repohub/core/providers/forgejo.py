@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 
 import httpx
 
+from repohub.core.accounts import ProviderAccount, clean_login
 from repohub.core.models import MAX_STARS, Asset, Release, Repo, SearchFilters, parse_arch
 from repohub.core.textsafe import clean_text
 from repohub.core.providers.base import NotFound, ProviderError, RateLimited, guard_parse, safe_url, valid_slug
@@ -228,3 +229,13 @@ class ForgejoProvider:
                 assets.append(Asset(clean_text(a["name"]), size, url, parse_arch(a["name"])))
         published = j.get("published_at")
         return Release(clean_text(j["tag_name"]), clean_text(published) if isinstance(published, str) else None, tuple(assets))
+
+    @guard_parse
+    async def account(self) -> ProviderAccount | None:
+        """Who the token belongs to (None when there is no token). Forgejo reports no scopes or limits."""
+        if "Authorization" not in self._client.headers:
+            return None
+        resp = await self._get("/user")
+        if resp is None:
+            raise ProviderError(self.host, "unexpected response")
+        return ProviderAccount(clean_login(resp.json()["login"]))

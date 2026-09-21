@@ -7,6 +7,8 @@ import time
 from dataclasses import asdict, dataclass
 from typing import Callable
 
+from repohub.core.accounts import (ANONYMOUS, ERROR, LIMITED, REJECTED, SIGNED_IN, UNAVAILABLE, AccountInfo,
+                                    star_fork_hint)
 from repohub.core.browse import Shelf, ShelfEntry
 from repohub.core.cache import Cache
 from repohub.core.hosts import registry
@@ -19,6 +21,7 @@ SEARCH_TTL = 600
 DETAIL_TTL = 3600
 DEGRADED_TTL = 60
 PARTIAL_TTL = 60
+ACCOUNT_TTL = 300
 MIN_LIMIT_WAIT = 60
 MAX_LIMIT_WAIT = 3600
 REFRESH_CONCURRENCY = 8
@@ -81,10 +84,13 @@ def _domain(host: str) -> str:
 
 class Hub:
     def __init__(self, providers: dict, cache: Cache, favorites: Favorites, *,
-                 clock: Callable[[], float] = time.time, host_problems: list[str] | None = None):
+                 clock: Callable[[], float] = time.time, host_problems: list[str] | None = None,
+                 token_sources: dict[str, str] | None = None):
         self.providers, self.cache, self.favorites = providers, cache, favorites
         self.host_problems: list[str] = list(host_problems) if host_problems else []
+        self.token_sources: dict[str, str] = dict(token_sources or {})  # host -> "env NAME" / "gh CLI"
         self._clock = clock
+        self._accounts: dict[str, tuple[float, AccountInfo]] = {}  # in memory only, never on disk
         self._limited_until: dict[str, tuple[float, str]] = {}  # host -> (until, message)
 
     def _note_rate_limit(self, host: str, err: RateLimited) -> None:
@@ -241,3 +247,49 @@ class Hub:
                 self.favorites.mark_checked(repo.key)  # retry at most once per max_age
 
         await asyncio.gather(*(one(r) for r in self.favorites.stale(max_age)))
+
+    async def account(self, host: str, *, refresh: bool = False) -> AccountInfo:
+        """Who RepoHub is signed in as on one host. Cached in memory for a few minutes; read-only."""
+        spec = registry().get(host)
+        provider = self.providers.get(host)
+        if spec is None or provider is None:
+            return AccountInfo(host, spec.name if spec else host, UNAVAILABLE)
+        key = f"{host}@{spec.domain}"
+        hit = self._accounts.get(key)
+        if getattr(provider, "token_rejected", False):  # a token dropped since caching must show at once
+            self._accounts.pop(key, None)
+        elif hit is not None and not refresh and self._clock() < hit[0]:
+            return hit[1]
+        info = await self._fetch_account(spec, provider)
+        if info.status in (SIGNED_IN, ANONYMOUS, REJECTED):  # errors and limits are retried next time
+            self._accounts[key] = (self._clock() + ACCOUNT_TTL, info)
+        return info
+
+    async def _fetch_account(self, spec, provider) -> AccountInfo:
+        source = self.token_sources.get(spec.id, "")
+        base = {"host": spec.id, "name": spec.name, "source": source}
+        if getattr(provider, "token_rejected", False):
+            return AccountInfo(status=REJECTED, message="The token was rejected by the host.", **base)
+        limited = self._limit_message(spec.id)
+        if limited is not None:
+            return AccountInfo(status=LIMITED, message=limited, **base)
+        try:
+            found = await with_deadline(spec.id, provider.account())
+        except RateLimited as e:
+            self._note_rate_limit(spec.id, e)
+            return AccountInfo(status=LIMITED, message=str(e), **base)
+        except ProviderError as e:
+            if getattr(provider, "token_rejected", False):
+                return AccountInfo(status=REJECTED, message="The token was rejected by the host.", **base)
+            return AccountInfo(status=ERROR, message=str(e), **base)
+        except Exception:
+            return AccountInfo(status=ERROR, message="unexpected error", **base)
+        if found is None:
+            return AccountInfo(status=ANONYMOUS, **base)
+        can, hint = star_fork_hint(spec.kind, found.scopes)
+        return AccountInfo(status=SIGNED_IN, login=found.login, scopes=found.scopes, rate=found.rate,
+                           can_star_fork=can, hint=hint, **base)
+
+    async def accounts(self, *, refresh: bool = False) -> list[AccountInfo]:
+        """One entry per registered host, in registry order."""
+        return list(await asyncio.gather(*(self.account(h, refresh=refresh) for h in registry().ids)))
