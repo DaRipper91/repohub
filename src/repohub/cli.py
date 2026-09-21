@@ -14,7 +14,8 @@ import sys
 from typing import Callable, TextIO
 
 from repohub.core.browse import Shelf, load_all_shelves
-from repohub.core.models import HOSTS, MAX_DAYS, MAX_STARS, SORTS, Repo, SearchFilters
+from repohub.core.hosts import registry
+from repohub.core.models import MAX_DAYS, MAX_STARS, SORTS, Repo, SearchFilters
 from repohub.core.providers.base import NotFound, ProviderError, valid_slug
 from repohub.core.queryparse import parse_query
 from repohub.core.textsafe import clean_text
@@ -190,7 +191,7 @@ def _emit_list(o: _Out, as_json: bool, repos: list[Repo], errors: dict[str, str]
 def _cmd_search(args, hub, o: _Out) -> int:
     base = SearchFilters(language=args.lang, min_stars=args.min_stars,
                          updated_within_days=args.days or None,
-                         hosts=HOSTS if args.host in (None, "both") else (args.host,),
+                         hosts=registry().ids if args.host in (None, "both") else (args.host,),
                          include_archived=args.archived, sort=args.sort or "stars",
                          hide_forks=args.no_forks)
     parsed = parse_query(" ".join(args.text), base)
@@ -201,7 +202,7 @@ def _cmd_search(args, hub, o: _Out) -> int:
 
 def _valid_repo_arg(value: str) -> tuple[str, str] | None:
     host, sep, slug = value.partition(":")
-    if not sep or host not in HOSTS or len(slug) > 200 or not valid_slug(slug, host):
+    if not sep or host not in registry().ids or len(slug) > 200 or not valid_slug(slug, host):
         return None
     return host, slug
 

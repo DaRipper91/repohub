@@ -102,3 +102,36 @@ def test_ordered_is_stable_github_first_then_slug():
     repos = [mk("gitlab", "a/a", 5), mk("github", "z/z", 5), mk("github", "B/b", 5), mk("gitlab", "0/0", 9)]
     assert [x.slug for x in _ordered(repos, "stars")] == ["0/0", "B/b", "z/z", "a/a"]
     assert [x.slug for x in _ordered(repos, "bogus")] == ["0/0", "B/b", "z/z", "a/a"]
+
+
+async def test_three_host_tie_break_order_github_gitlab_codeberg():
+    provs = [FakeProvider("codeberg", [mk("codeberg", "s/tie", 5)]),
+             FakeProvider("gitlab", [mk("gitlab", "s/tie", 5)]),
+             FakeProvider("github", [mk("github", "s/tie", 5)])]
+    r = await run(provs)
+    assert [x.host for x in r.repos] == ["github"]
+    r = await run(provs[:2])
+    assert [x.host for x in r.repos] == ["gitlab"]
+
+
+def test_ordered_three_hosts_equal_stars():
+    from repohub.core.search import _ordered
+    repos = [mk("codeberg", "a/a", 5), mk("gitlab", "a/a", 5), mk("github", "a/a", 5)]
+    assert [x.host for x in _ordered(repos, "stars")] == ["github", "gitlab", "codeberg"]
+
+
+async def test_dedupe_keeps_higher_ranked_host_on_ties_and_more_stars_otherwise():
+    cb = FakeProvider("codeberg", [mk("codeberg", "x/y", 10), mk("codeberg", "t/t", 9)])
+    gl = FakeProvider("gitlab", [mk("gitlab", "x/y", 10), mk("gitlab", "t/t", 8)])
+    r = await run([cb, gl])
+    by = {x.slug: x for x in r.repos}
+    assert by["x/y"].host == "gitlab" and by["t/t"].host == "codeberg"
+
+
+async def test_custom_registry_rank_drives_tie_break():
+    from repohub.core.hosts import HostRegistry, HostSpec, set_registry
+    set_registry(HostRegistry([HostSpec("mine", "forgejo", "Mine", "git.example.org", "https://git.example.org/api/v1"),
+                               HostSpec("github", "github", "GitHub", "github.com", "https://api.github.com")]))
+    r = await run([FakeProvider("github", [mk("github", "a/a", 5)]), FakeProvider("mine", [mk("mine", "a/a", 5)])],
+                  SearchFilters())
+    assert [x.host for x in r.repos] == ["mine"]

@@ -44,7 +44,7 @@ def test_release_roundtrip_and_arm64_flag():
 
 def test_filters_default_to_both_hosts_and_hide_archived():
     f = SearchFilters()
-    assert f.hosts == ("github", "gitlab") and f.include_archived is False
+    assert f.hosts == ("github", "gitlab", "codeberg") and f.include_archived is False
 
 
 def test_old_cached_row_without_fork_loads():

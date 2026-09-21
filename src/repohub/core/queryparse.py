@@ -3,7 +3,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, replace
 
-from repohub.core.models import HOSTS, MAX_DAYS, MAX_STARS, SORTS, SearchFilters
+from repohub.core.hosts import registry
+from repohub.core.models import MAX_DAYS, MAX_STARS, SORTS, SearchFilters
 from repohub.core.textsafe import clean_text
 
 MAX_PROBLEMS = 10
@@ -59,11 +60,12 @@ def _apply(filters: SearchFilters, key: str, value: str) -> SearchFilters:
         return replace(filters, updated_within_days=_int(value, "days", MAX_DAYS) or None)
     if key == "host":
         v = value.lower()
-        if v == "both":
-            return replace(filters, hosts=HOSTS)
-        if v in HOSTS:
+        ids = registry().ids
+        if v in ("both", "all"):
+            return replace(filters, hosts=ids)
+        if v in ids:
             return replace(filters, hosts=(v,))
-        raise ValueError("host must be github, gitlab or both")
+        raise ValueError("host must be one of: " + ", ".join(ids + ("all",)))
     if key == "sort":
         v = value.lower()
         if v not in SORTS:

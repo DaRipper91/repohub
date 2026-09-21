@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
-HOSTS = ("github", "gitlab")
+from repohub.core.hosts import registry
+
 MAX_STARS = 10_000_000
 MAX_DAYS = 36500
 
@@ -86,7 +87,7 @@ class SearchFilters:
     min_stars: int = 0
     updated_within_days: int | None = None
     topic: str | None = None
-    hosts: tuple[str, ...] = HOSTS
+    hosts: tuple[str, ...] = field(default_factory=lambda: registry().ids)
     include_archived: bool = False
     pushed_after: str | None = None  # YYYY-MM-DD, set by search_all from updated_within_days
     sort: str = "stars"

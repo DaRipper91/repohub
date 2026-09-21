@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 
+from repohub.core.hosts import registry
 from repohub.core.models import Repo, SearchFilters
 from repohub.core.providers.base import ProviderError
 
@@ -35,7 +36,8 @@ def _keep(repo: Repo, f: SearchFilters) -> bool:
 
 
 def _ordered(repos, sort: str) -> list[Repo]:
-    tied = sorted(repos, key=lambda r: (r.host != "github", r.slug.lower()))
+    rank = registry().rank
+    tied = sorted(repos, key=lambda r: (rank(r.host), r.slug.lower()))
     if sort == "updated":
         return sorted(tied, key=lambda r: r.pushed_at, reverse=True)
     if sort == "forks":
@@ -52,6 +54,7 @@ async def search_all(providers: dict, query: str, filters: SearchFilters, now: d
     outcomes = await asyncio.gather(*(providers[h].search(query, filters) for h in hosts), return_exceptions=True)
     errors: dict[str, str] = {}
     best: dict[str, Repo] = {}
+    rank = registry().rank
     for host, out in zip(hosts, outcomes):
         if isinstance(out, ProviderError):
             errors[host] = str(out)
@@ -63,7 +66,7 @@ async def search_all(providers: dict, query: str, filters: SearchFilters, now: d
             if not _keep(repo, filters):
                 continue
             cur = best.get(repo.slug.lower())
-            if cur is None or repo.stars > cur.stars or (repo.stars == cur.stars and repo.host == "github"):
+            if cur is None or repo.stars > cur.stars or (repo.stars == cur.stars and rank(repo.host) < rank(cur.host)):
                 best[repo.slug.lower()] = repo
     repos = _ordered(best.values(), filters.sort)
     return SearchResult(repos, errors)

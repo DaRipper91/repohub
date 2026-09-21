@@ -43,7 +43,7 @@ def test_language_alias():
 
 def test_host_both_and_days_zero():
     p = parse_query("host:both days:0", SearchFilters(hosts=("github",), updated_within_days=7))
-    assert p.filters.hosts == ("github", "gitlab")
+    assert p.filters.hosts == ("github", "gitlab", "codeberg")
     assert p.filters.updated_within_days is None
 
 
@@ -197,3 +197,32 @@ def test_zero_padded_numbers():
     assert parse_query("stars:" + "0" * 50).filters.min_stars == 0
     p = parse_query("stars:1234567890123")
     assert len(p.problems) == 1 and p.filters == SearchFilters()
+
+
+def test_host_codeberg_restricts():
+    assert parse_query("tui host:codeberg").filters.hosts == ("codeberg",)
+
+
+def test_host_all_and_case_insensitive():
+    base = SearchFilters(hosts=("github",))
+    assert parse_query("host:ALL", base).filters.hosts == ("github", "gitlab", "codeberg")
+    assert parse_query("host:Both", base).filters.hosts == ("github", "gitlab", "codeberg")
+    assert parse_query("host:CodeBerg").filters.hosts == ("codeberg",)
+
+
+def test_host_unknown_lists_registry_ids():
+    p = parse_query("tui host:nowhere")
+    assert p.text == "tui" and p.filters == SearchFilters()
+    assert p.problems == ("host must be one of: github, gitlab, codeberg, all",)
+
+
+def test_custom_registry_changes_host_values_and_default_hosts():
+    from repohub.core.hosts import BUILTIN_HOSTS, HostRegistry, HostSpec, set_registry
+    extra = HostSpec("mine", "forgejo", "Mine", "git.example.org", "https://git.example.org/api/v1")
+    set_registry(HostRegistry(BUILTIN_HOSTS + (extra,)))
+    assert SearchFilters().hosts == ("github", "gitlab", "codeberg", "mine")
+    assert parse_query("host:mine").filters.hosts == ("mine",)
+    assert parse_query("host:all").filters.hosts == ("github", "gitlab", "codeberg", "mine")
+    assert parse_query("host:nowhere").problems == ("host must be one of: github, gitlab, codeberg, mine, all",)
+    set_registry(HostRegistry(BUILTIN_HOSTS[:1]))
+    assert SearchFilters().hosts == ("github",)

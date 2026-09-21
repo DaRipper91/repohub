@@ -8,9 +8,7 @@ import threading
 from pathlib import Path
 from urllib.parse import urlparse
 
-from repohub.core.providers.base import valid_slug
-
-HOSTS = {"github": "github.com", "gitlab": "gitlab.com"}
+from repohub.core.hosts import registry
 _NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
 
 
@@ -23,9 +21,11 @@ class CloneError(Exception):
 
 
 def clone_url(host: str, slug: str) -> str:
-    if host not in HOSTS or not valid_slug(slug, host):
+    reg = registry()
+    domain = reg.clone_domains().get(host)
+    if domain is None or not reg.slug_ok(host, slug):
         raise CloneError("invalid repository")
-    return f"https://{HOSTS[host]}/{slug}.git"
+    return f"https://{domain}/{slug}.git"
 
 
 def _validate(url: str) -> tuple[str, str, str]:
@@ -35,15 +35,17 @@ def _validate(url: str) -> tuple[str, str, str]:
     if any(c.isspace() or ord(c) < 32 or ord(c) == 127 for c in url):
         raise CloneError("URL contains whitespace or control characters")
     u = urlparse(url)
-    if u.scheme != "https" or u.hostname not in HOSTS.values() or u.username or u.password or u.port:
-        raise CloneError("only plain https URLs on github.com or gitlab.com are allowed")
+    reg = registry()
+    domains = set(reg.clone_domains().values())  # exact (lowercase) match, never a suffix or substring
+    if u.scheme != "https" or u.hostname not in domains or u.username or u.password or u.port:
+        raise CloneError("only plain https URLs on a configured host are allowed")
     if u.query or u.fragment or u.params or ":" in u.netloc:
-        raise CloneError("only plain https URLs on github.com or gitlab.com are allowed")
+        raise CloneError("only plain https URLs on a configured host are allowed")
     path = u.path.strip("/")
     if path.endswith(".git"):
         path = path[:-4]
-    host = "github" if u.hostname == "github.com" else "gitlab"
-    if not valid_slug(path, host):
+    host = reg.id_for_domain(u.hostname)
+    if host is None or not reg.slug_ok(host, path):
         raise CloneError("invalid repository path")
     name = path.split("/")[-1]
     if not _NAME.fullmatch(name):

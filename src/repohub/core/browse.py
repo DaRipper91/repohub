@@ -16,7 +16,8 @@ from pathlib import Path
 import yaml
 from platformdirs import user_config_dir
 
-from repohub.core.models import HOSTS, MAX_STARS, SearchFilters
+from repohub.core.hosts import ID_RE, registry
+from repohub.core.models import MAX_STARS, SearchFilters
 from repohub.core.providers.base import valid_slug
 from repohub.core.queryparse import LANG_RE, TOPIC_RE
 from repohub.core.textsafe import clean_text
@@ -171,11 +172,14 @@ def _parse_entry(raw: object) -> ShelfEntry:
     if not sep:
         raise ValueError(f"{_show(repo)} must look like host:owner/name")
     host = host.strip().lower()
-    if host not in HOSTS:
+    if not ID_RE.fullmatch(host):
         raise ValueError(f"unknown host {_show(host)}")
     if len(slug) > MAX_SLUG:
         raise ValueError(f"slug too long (over {MAX_SLUG} characters)")
-    if not valid_slug(slug, host):
+    reg = registry()
+    # A syntactically valid host that is not configured is kept (handled later); it gets the lenient rule.
+    slug_ok = reg.slug_ok(host, slug) if host in reg else valid_slug(slug, "gitlab")
+    if not slug_ok:
         raise ValueError(f"invalid slug {_show(slug)} for host {host}")
     return ShelfEntry(host, slug, _text(note, MAX_NOTE), _parse_snapshot(snap_raw))
 

@@ -74,7 +74,7 @@ def test_entry_string_and_mapping_and_snapshot():
 
 
 @pytest.mark.parametrize("entry,msg", [
-    ("bitbucket:a/b", r"shelf 'X' entry #0: unknown host 'bitbucket'"),
+    ("Bad_Host:a/b", r"shelf 'X' entry #0: unknown host 'bad_host'"),
     ("github:../x", r"entry #0: invalid slug"),
     ({"repo": "github:o/r\nx"}, r"entry #0: invalid slug"),
     ("github:", r"entry #0: invalid slug"),
@@ -99,8 +99,8 @@ def test_entry_validation_errors(entry, msg):
 
 
 def test_entry_error_names_entry_number():
-    with pytest.raises(ValueError, match=r"shelf 'X' entry #2: unknown host 'bitbucket'"):
-        _one(["github:a/b", "github:c/d", "bitbucket:e/f"])
+    with pytest.raises(ValueError, match=r"shelf 'X' entry #2: unknown host 'bad_host'"):
+        _one(["github:a/b", "github:c/d", "Bad_Host:e/f"])
 
 
 def test_duplicate_entries_rejected_case_insensitively():
@@ -197,7 +197,7 @@ def test_missing_personal_file_is_silent(tmp_path):
 
 @pytest.mark.parametrize("content", [
     b"- name: [unclosed\n", b"name: x\n", b"- name: x\n  bogus: 1\n", b"\xff\xfe\x00bad",
-    b"- name: x\n  repos: [bitbucket:a/b]\n", b"!!python/object/apply:os.system ['true']\n",
+    b"- name: x\n  repos: [Bad_Host:a/b]\n", b"!!python/object/apply:os.system ['true']\n",
     b"a: &a [1,2]\nb: *a\n" + b"#" * 2_000_000,
 ])
 def test_broken_personal_file_gives_problem_and_defaults_load(tmp_path, content):
@@ -373,8 +373,8 @@ def test_empty_repos_is_an_error(repos):
 
 def test_shared_constants_come_from_models():
     from repohub.core import browse, models, queryparse
-    assert models.HOSTS == ("github", "gitlab") and models.MAX_STARS == 10_000_000 and models.MAX_DAYS == 36500
-    assert browse.HOSTS is models.HOSTS and queryparse.HOSTS is models.HOSTS
+    assert models.MAX_STARS == 10_000_000 and models.MAX_DAYS == 36500
+    assert not hasattr(models, "HOSTS") and not hasattr(browse, "HOSTS") and not hasattr(queryparse, "HOSTS")
     assert queryparse.LANG_RE.match("C++") and queryparse.TOPIC_RE.match("tui")
 
 
@@ -437,3 +437,29 @@ def test_show_describes_containers_by_type_only():
     assert browse._show({"a": 1}) == "<dict>"
     assert browse._show(5) == "5" and browse._show(None) == "None" and browse._show(True) == "True"
     assert browse._show("a\x1b[31m" + "x" * 100) == repr(("a[31m" + "x" * 100)[:60])
+
+
+def test_entry_for_unconfigured_but_valid_host_is_kept():
+    s = _one(["forgejo-x:a/b", "selfhost:g/sub/p"])
+    assert [e.key for e in s.repos] == ["forgejo-x:a/b", "selfhost:g/sub/p"]
+
+
+@pytest.mark.parametrize("entry", ["selfhost:../x", "selfhost:o", "selfhost:", "selfhost:a/b\nc", "1bad:a/b", "sp ace:a/b"])
+def test_entry_for_unconfigured_host_still_needs_safe_slug_and_id(entry):
+    with pytest.raises(ValueError):
+        _one([entry])
+
+
+def test_configured_host_uses_registry_slug_rule():
+    assert _one(["codeberg:o/r"]).repos[0].key == "codeberg:o/r"
+    with pytest.raises(ValueError, match="invalid slug"):
+        _one(["codeberg:g/sub/p"])
+    with pytest.raises(ValueError, match="invalid slug"):
+        _one(["github:g/sub/p"])
+    assert _one(["gitlab:g/sub/p"]).repos[0].slug == "g/sub/p"
+
+
+def test_custom_gitlab_kind_host_allows_nested_slug():
+    from repohub.core.hosts import BUILTIN_HOSTS, HostRegistry, HostSpec, set_registry
+    set_registry(HostRegistry(BUILTIN_HOSTS + (HostSpec("mylab", "gitlab", "My Lab", "git.example.org", "https://git.example.org/api/v4"),)))
+    assert _one(["mylab:g/sub/p"]).repos[0].slug == "g/sub/p"

@@ -11,7 +11,7 @@ def test_clone_url_builds_from_host_and_slug():
     assert clone_url("gitlab", "g/sub/p") == "https://gitlab.com/g/sub/p.git"
 
 
-@pytest.mark.parametrize("host,slug", [("bitbucket", "o/r"), ("github", "../x"), ("github", "o")])
+@pytest.mark.parametrize("host,slug", [("bitbucket", "o/r"), ("Bad_Host", "o/r"), ("github", "../x"), ("github", "o")])
 def test_clone_url_rejects_bad_input(host, slug):
     with pytest.raises(CloneError):
         clone_url(host, slug)
@@ -213,3 +213,70 @@ def test_different_targets_clone_concurrently(tmp_path):
     release.set()
     t.join(5)
     assert (tmp_path / "one").is_dir()
+
+
+# --- Phase 2: the allow-list comes from the host registry ---
+
+def _registry_with_extra():
+    from repohub.core.hosts import BUILTIN_HOSTS, HostRegistry, HostSpec, set_registry
+    set_registry(HostRegistry(BUILTIN_HOSTS + (HostSpec("mine", "forgejo", "Mine", "git.example.org", "https://git.example.org/api/v1"),)))
+
+
+def test_clone_url_codeberg():
+    assert clone_url("codeberg", "o/r") == "https://codeberg.org/o/r.git"
+
+
+def test_codeberg_url_clones_to_right_folder_with_canonical_url(tmp_path):
+    seen = {}
+    target = clone("https://codeberg.org/o/r", tmp_path, runner=_ok_runner(seen))
+    assert target == tmp_path.resolve() / "r"
+    assert seen["args"][-2] == "https://codeberg.org/o/r.git"
+
+
+def test_uppercase_domain_is_canonicalised(tmp_path):
+    seen = {}
+    clone("https://CODEBERG.org/o/r", tmp_path, runner=_ok_runner(seen))
+    assert seen["args"][-2] == "https://codeberg.org/o/r.git"
+
+
+def test_extra_registry_host_is_accepted_and_unconfigured_rejected(tmp_path):
+    with pytest.raises(CloneError):
+        plan_clone("https://git.example.org/o/r", tmp_path)
+    with pytest.raises(CloneError):
+        clone_url("mine", "o/r")
+    _registry_with_extra()
+    assert clone_url("mine", "o/r") == "https://git.example.org/o/r.git"
+    seen = {}
+    clone("https://git.example.org/o/r", tmp_path, runner=_ok_runner(seen))
+    assert seen["args"][-2] == "https://git.example.org/o/r.git"
+    with pytest.raises(CloneError, match="configured host"):
+        plan_clone("https://other.example.org/o/r", tmp_path)
+
+
+def test_removed_host_is_rejected_at_call_time(tmp_path):
+    from repohub.core.hosts import BUILTIN_HOSTS, HostRegistry, set_registry
+    set_registry(HostRegistry(BUILTIN_HOSTS[:1]))
+    with pytest.raises(CloneError, match="configured host"):
+        plan_clone("https://codeberg.org/o/r", tmp_path)
+    with pytest.raises(CloneError):
+        clone_url("codeberg", "o/r")
+
+
+@pytest.mark.parametrize("url", [
+    "https://codeberg.org.evil.com/o/r", "https://github.com@evil.com/o/r", "https://evil-codeberg.org/o/r",
+    "https://codeberg.org:443/o/r", "https://evilcodeberg.org/o/r", "https://sub.codeberg.org/o/r",
+    "https://codeberg.org@evil.com/o/r", "https://evil.com/codeberg.org/o/r", "http://codeberg.org/o/r",
+    "https://user@codeberg.org/o/r", "https://user:pw@codeberg.org/o/r", "https://codeberg.org/o/r?x=1",
+    "https://codeberg.org/o/r#f", "https://codeberg.org/o/../r", "https://codeberg.org/o", "https://codeberg.org/g/s/p",
+    "https://codeberg.org./o/r", "https://codeberg.org/o/r\n", "ssh://codeberg.org/o/r", "git@codeberg.org:o/r",
+])
+def test_codeberg_lookalikes_and_old_rejections_still_fail(url, tmp_path):
+    with pytest.raises(CloneError):
+        plan_clone(url, tmp_path)
+    with pytest.raises(CloneError):
+        clone(url, tmp_path, runner=lambda *a, **k: pytest.fail("must not run git"))
+
+
+def test_error_message_names_configured_host_rule(tmp_path):
+    with pytest.raises(CloneError, match="only plain https URLs on a configured host are allowed"):
+        plan_clone("https://evil.com/a/b", tmp_path)
