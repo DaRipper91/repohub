@@ -60,8 +60,8 @@ The GitHub and GitLab write and identity endpoints are checked against the real 
 - Today `("github", "gitlab")` is hard-coded in several modules. It becomes a registry of hosts, each with: `id`, `kind` (`github`, `gitlab`, `forgejo`), display name, web domain, API base URL, and the token environment variable.
 - Built in: `github`, `gitlab`, and `codeberg` (kind `forgejo`, `https://codeberg.org`).
 - Extra instances go in `hosts.yaml` in the user config directory (found with platformdirs, next to `shelves.yaml`):
-  `- {id: myforge, kind: forgejo, url: https://git.example.org, token_env: MYFORGE_TOKEN}`.
-  Rules: `url` must be `https` with a plain hostname (no credentials, port allowed, no path other than an optional base path checked strictly), ids are `[a-z0-9-]{1,20}` and cannot clash with built-in ids, at most 20 extra hosts, file size limit, regular files only. A broken file never stops the app: the problem is shown and the file is skipped (same handling as the personal shelves file).
+  `- {id: myforge, kind: forgejo, url: https://git.example.org, token_env: REPOHUB_MYFORGE_TOKEN}`. Extra hosts' token variables must start with `REPOHUB_` (and end in `_TOKEN`), so a tampered config cannot bind an unrelated environment variable such as `AWS_SESSION_TOKEN` to a host it controls; the default is `REPOHUB_<ID>_TOKEN`.
+  Rules: `url` must be `https` with a plain ASCII hostname: no credentials, no port, no query or fragment, and no path other than an empty one or `/` (extra instances must serve the API at `/api/v1` on the standard https port); IP literals, `localhost` and single-label names are rejected; ids are `[a-z][a-z0-9-]{0,19}` and cannot clash with built-in ids; domains and token variables must be unique across all hosts; at most 20 extra hosts; the file is at most 256 KB, must be a regular file, and duplicate YAML keys are rejected. A broken file never stops the app: the problem is shown and the file is skipped (same handling as the personal shelves file).
 - Repo keys keep the shape `host:owner/name`, with the host id.
 - Every place that lists hosts (query syntax `host:`, the web dropdown, the CLI `--host`, badges, the `Repo.host` validation, curated shelf entries, favorites, cache keys) reads the registry. A shelf entry or favorite for a host that is no longer configured stays stored and is shown as unavailable, not deleted.
 
@@ -80,7 +80,7 @@ The GitHub and GitLab write and identity endpoints are checked against the real 
 
 # Phase 3: accounts and login
 
-- No secrets are stored. Tokens are found per host from env variables and the `gh` CLI: `GITHUB_TOKEN`, `GH_TOKEN`, `gh auth token`, `GITLAB_TOKEN`, `CODEBERG_TOKEN`, and each extra host's `token_env`.
+- No secrets are stored. Tokens are found per host from env variables and the `gh` CLI: `GITHUB_TOKEN`, `GH_TOKEN`, `gh auth token`, `GITLAB_TOKEN`, `CODEBERG_TOKEN`, and each extra host's `REPOHUB_<ID>_TOKEN`.
 - An **Accounts** page in the web app (`/accounts`), a key in the terminal app, and a read-only `repohub accounts` command. For each host it shows who you are signed in as (`GET /user`), where the token came from (for example "env GITLAB_TOKEN" or "gh CLI", never the token), the token's scopes where the host reports them, and the rate limit where the host exposes it.
 - A "can I star and fork here?" hint is derived from what the host reports, with the exact fix command when one exists, and "unknown" when a host does not expose scopes.
 - Identity and scope lookups are cached for a few minutes and never stored on disk. The page only reads.
