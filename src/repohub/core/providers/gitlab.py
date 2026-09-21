@@ -8,7 +8,7 @@ import httpx
 from repohub.core.accounts import ProviderAccount, clean_login, clean_scopes, parse_rate
 from repohub.core.models import Asset, Release, Repo, SearchFilters, parse_arch
 from repohub.core.textsafe import clean_text
-from repohub.core.providers.base import NotFound, ProviderError, RateLimited, guard_parse, safe_url, valid_slug
+from repohub.core.providers.base import ForkResult, NotFound, call, fork_result, ProviderError, RateLimited, guard_parse, safe_url, valid_slug
 
 README_NAMES = ("README.md", "README.markdown", "README.rst", "README.txt", "README")
 
@@ -145,3 +145,29 @@ class GitLabProvider:
         except (ProviderError, ValueError, AttributeError):
             pass
         return ProviderAccount(login, scopes, rate)
+
+    async def _call(self, method: str, path: str, ok: tuple[int, ...], params: dict | None = None):
+        return await call(self._client, self.host, method, path, ok=ok, params=params, auth_header="PRIVATE-TOKEN")
+
+    @guard_parse
+    async def starred(self, slug: str) -> bool:
+        """GitLab has no direct check: look for the signed-in username among the project's starrers."""
+        pid = self._check_slug(slug)
+        me = clean_login((await self._call("GET", "/user", (200,))).json()["username"])
+        if not me:
+            raise ProviderError(self.host, "unexpected response")
+        found = (await self._call("GET", f"/projects/{pid}/starrers", (200,), {"search": me, "per_page": 20})).json()
+        return any(isinstance(s, dict) and isinstance(s.get("user"), dict) and s["user"].get("username") == me
+                   for s in found)
+
+    async def star(self, slug: str) -> None:
+        await self._call("POST", f"/projects/{self._check_slug(slug)}/star", (200, 201, 304))
+
+    async def unstar(self, slug: str) -> None:
+        await self._call("POST", f"/projects/{self._check_slug(slug)}/unstar", (200, 201, 304))
+
+    @guard_parse
+    async def fork(self, slug: str) -> ForkResult:
+        resp = await self._call("POST", f"/projects/{self._check_slug(slug)}/fork", (200, 201, 202))
+        j = resp.json()
+        return fork_result("https://gitlab.com", j["path_with_namespace"], j.get("web_url"))

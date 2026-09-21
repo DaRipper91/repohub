@@ -6,6 +6,7 @@ from pathlib import Path
 from platformdirs import user_data_dir
 
 from repohub.core.auth import HostTokens, check_token_env_unique, find_host_tokens_and_sources
+from repohub.core.actionlog import ActionLog
 from repohub.core.cache import Cache
 from repohub.core.hosts import HostRegistry, registry
 from repohub.core.hostsconfig import configure_hosts
@@ -46,4 +47,5 @@ def build_hub() -> Hub:
     reg = registry()
     tokens, sources = find_host_tokens_and_sources(reg)
     providers = make_providers(reg, tokens)
-    return Hub(providers, Cache(db), Favorites(db), host_problems=problems, token_sources=sources)
+    return Hub(providers, Cache(db), Favorites(db), host_problems=problems, token_sources=sources,
+               actions=ActionLog(db))

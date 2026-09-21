@@ -5,7 +5,7 @@ import httpx
 from repohub.core.accounts import ProviderAccount, clean_login, clean_scopes, parse_rate
 from repohub.core.models import Asset, Release, Repo, SearchFilters, parse_arch
 from repohub.core.textsafe import clean_text
-from repohub.core.providers.base import NotFound, ProviderError, RateLimited, guard_parse, safe_url, valid_slug
+from repohub.core.providers.base import ForkResult, NotFound, call, fork_result, ProviderError, RateLimited, guard_parse, safe_url, valid_slug
 
 
 def _to_repo(item: dict) -> Repo:
@@ -126,3 +126,26 @@ class GitHubProvider:
         listed = resp.headers.get("x-oauth-scopes")  # absent for fine-grained tokens
         scopes = None if listed is None else clean_scopes(s.strip() for s in listed.split(","))
         return ProviderAccount(clean_login(resp.json()["login"]), scopes, parse_rate(resp.headers, "x-ratelimit"))
+
+    async def starred(self, slug: str) -> bool:
+        self._check_slug(slug)
+        try:
+            await call(self._client, self.host, "GET", f"/user/starred/{slug}", ok=(204,))
+        except NotFound:
+            return False
+        return True
+
+    async def star(self, slug: str) -> None:
+        self._check_slug(slug)
+        await call(self._client, self.host, "PUT", f"/user/starred/{slug}", ok=(204, 304))
+
+    async def unstar(self, slug: str) -> None:
+        self._check_slug(slug)
+        await call(self._client, self.host, "DELETE", f"/user/starred/{slug}", ok=(204, 304))
+
+    @guard_parse
+    async def fork(self, slug: str) -> ForkResult:
+        self._check_slug(slug)
+        resp = await call(self._client, self.host, "POST", f"/repos/{slug}/forks", ok=(202,))
+        j = resp.json()
+        return fork_result("https://github.com", j["full_name"], j.get("html_url"))

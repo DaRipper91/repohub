@@ -10,7 +10,7 @@ import httpx
 from repohub.core.accounts import ProviderAccount, clean_login
 from repohub.core.models import MAX_STARS, Asset, Release, Repo, SearchFilters, parse_arch
 from repohub.core.textsafe import clean_text
-from repohub.core.providers.base import NotFound, ProviderError, RateLimited, guard_parse, safe_url, valid_slug
+from repohub.core.providers.base import ForkResult, NotFound, call, fork_result, ProviderError, RateLimited, guard_parse, safe_url, valid_slug
 
 README_NAMES = ("README.md", "README.markdown", "README.rst", "README.txt", "README")
 MAX_LIMIT = 50
@@ -239,3 +239,26 @@ class ForgejoProvider:
         if resp is None:
             raise ProviderError(self.host, "unexpected response")
         return ProviderAccount(clean_login(resp.json()["login"]))
+
+    async def starred(self, slug: str) -> bool:
+        self._check_slug(slug)
+        try:
+            await call(self._client, self.host, "GET", f"/user/starred/{slug}", ok=(204,))
+        except NotFound:
+            return False
+        return True
+
+    async def star(self, slug: str) -> None:
+        self._check_slug(slug)
+        await call(self._client, self.host, "PUT", f"/user/starred/{slug}", ok=(204,))
+
+    async def unstar(self, slug: str) -> None:
+        self._check_slug(slug)
+        await call(self._client, self.host, "DELETE", f"/user/starred/{slug}", ok=(204,))
+
+    @guard_parse
+    async def fork(self, slug: str) -> ForkResult:
+        self._check_slug(slug)
+        resp = await call(self._client, self.host, "POST", f"/repos/{slug}/forks", ok=(202,))
+        j = resp.json()
+        return fork_result(f"https://{self._domain}", j["full_name"], j.get("html_url"))

@@ -32,3 +32,8 @@ class Cache:
                 (key, json.dumps(value), self._now() + ttl),
             )
             self._db.commit()
+
+    def delete(self, key: str) -> None:
+        with self._lock:
+            self._db.execute("DELETE FROM cache WHERE key = ?", (key,))
+            self._db.commit()

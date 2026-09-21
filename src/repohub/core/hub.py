@@ -9,11 +9,12 @@ from typing import Callable
 
 from repohub.core.accounts import (ANONYMOUS, ERROR, LIMITED, REJECTED, SIGNED_IN, UNAVAILABLE, AccountInfo,
                                     star_fork_hint)
+from repohub.core.actionlog import ActionEntry, ActionLog
 from repohub.core.browse import Shelf, ShelfEntry
 from repohub.core.cache import Cache
 from repohub.core.hosts import registry
 from repohub.core.models import Release, Repo, SearchFilters
-from repohub.core.providers.base import NotFound, ProviderError, RateLimited
+from repohub.core.providers.base import ActionDenied, ForkResult, NotFound, ProviderError, RateLimited
 from repohub.core.search import SearchResult, search_all, with_deadline
 from repohub.core.store import Favorites
 
@@ -85,10 +86,11 @@ def _domain(host: str) -> str:
 class Hub:
     def __init__(self, providers: dict, cache: Cache, favorites: Favorites, *,
                  clock: Callable[[], float] = time.time, host_problems: list[str] | None = None,
-                 token_sources: dict[str, str] | None = None):
+                 token_sources: dict[str, str] | None = None, actions: ActionLog | None = None):
         self.providers, self.cache, self.favorites = providers, cache, favorites
         self.host_problems: list[str] = list(host_problems) if host_problems else []
         self.token_sources: dict[str, str] = dict(token_sources or {})  # host -> "env NAME" / "gh CLI"
+        self.actions = actions if actions is not None else ActionLog()
         self._clock = clock
         self._accounts: dict[str, tuple[float, AccountInfo]] = {}  # in memory only, never on disk
         self._limited_until: dict[str, tuple[float, str]] = {}  # host -> (until, message)
@@ -293,3 +295,65 @@ class Hub:
     async def accounts(self, *, refresh: bool = False) -> list[AccountInfo]:
         """One entry per registered host, in registry order."""
         return list(await asyncio.gather(*(self.account(h, refresh=refresh) for h in registry().ids)))
+
+    # ------------------------------------------------------------ write actions (never retried)
+
+    async def _require_signed_in(self, host: str, slug: str):
+        """The provider to write with, or an error. Only a real, signed-in, not rate-limited host passes."""
+        spec, provider = registry().get(host), self.providers.get(host)
+        if spec is None or provider is None:
+            raise ProviderError(host, NOT_CONFIGURED)
+        if not registry().slug_ok(host, slug):
+            raise ProviderError(host, "invalid repository name")
+        limited = self._limit_message(host)
+        if limited is not None:
+            raise RateLimited(host, limited)
+        info = await self.account(host)
+        if info.status != SIGNED_IN:
+            raise ActionDenied(host, f"not signed in ({info.status}); see the Accounts page")
+        return provider
+
+    def _drop_repo_cache(self, host: str, slug: str) -> None:
+        for kind in ("repo", "detail"):
+            self.cache.delete(f"{kind}:{host}@{_domain(host)}:{slug.lower()}")
+
+    async def starred(self, host: str, slug: str) -> bool | None:
+        """Whether the signed-in account starred the repository; None when unknown (never raises)."""
+        try:
+            provider = await self._require_signed_in(host, slug)
+            return bool(await with_deadline(host, provider.starred(slug)))
+        except RateLimited as e:
+            self._note_rate_limit(host, e)
+        except Exception:
+            pass
+        return None
+
+    async def set_star(self, host: str, slug: str, star: bool) -> None:
+        """Star or unstar once. Already starred / not starred counts as success. Logged either way."""
+        action = "star" if star else "unstar"
+        await self._act(host, slug, action, lambda p: getattr(p, action)(slug))
+
+    async def fork(self, host: str, slug: str) -> ForkResult:
+        return await self._act(host, slug, "fork", lambda p: p.fork(slug))
+
+    async def _act(self, host: str, slug: str, action: str, run):
+        try:
+            provider = await self._require_signed_in(host, slug)
+            result = await with_deadline(host, run(provider))  # exactly one attempt
+        except RateLimited as e:
+            if self._limit_message(host) is None:  # a fresh limit from the host, not our own pause
+                self._note_rate_limit(host, e)
+            self.actions.add(host, slug, action, False, str(e))
+            raise
+        except ProviderError as e:
+            self.actions.add(host, slug, action, False, str(e))
+            raise
+        except Exception:
+            self.actions.add(host, slug, action, False, "unexpected error")
+            raise ProviderError(host, "unexpected error") from None
+        self.actions.add(host, slug, action, True, f"forked to {result.slug}" if action == "fork" else "done")
+        self._drop_repo_cache(host, slug)
+        return result
+
+    def recent_actions(self, limit: int = 20) -> list[ActionEntry]:
+        return self.actions.recent(limit)
