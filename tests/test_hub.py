@@ -366,7 +366,7 @@ async def test_repo_summary_caches_for_ttl_and_refetches_after():
     a = await hub.repo_summary("github", "O/R")
     b = await hub.repo_summary("github", "o/r")
     assert gh.calls == 1 and a == b
-    assert hub.cache.get("repo:github:o/r") == a.to_dict()
+    assert hub.cache.get("repo:github@github.com:o/r") == a.to_dict()
     clock.t += DETAIL_TTL + 1
     await hub.repo_summary("github", "o/r")
     assert gh.calls == 2
@@ -582,3 +582,148 @@ def test_snapshot_url_uses_the_registry_domain():
 def test_snapshot_url_is_empty_for_an_unconfigured_host():
     r = repo_from_snapshot(ShelfEntry("nowhere", "o/r", "", None), None)
     assert r.url == "" and r.host == "nowhere"
+
+
+# ---- per-host deadline, partial caching, cache keys --------------------------------------------
+
+class Hang(FakeProvider):
+    """Every call waits on an event that is never set."""
+
+    def __init__(self, host):
+        super().__init__(host, [mk(host, "o/r0", 5)])
+        self.never = asyncio.Event()
+
+    async def search(self, query, filters, per_page=30):
+        await self.never.wait()
+
+    async def repo(self, slug):
+        await self.never.wait()
+
+    async def readme(self, slug):
+        await self.never.wait()
+
+    async def latest_release(self, slug):
+        await self.never.wait()
+
+
+@pytest.fixture
+def fast_deadline(monkeypatch):
+    import repohub.core.search as search_mod
+    monkeypatch.setattr(search_mod, "HOST_DEADLINE", 0.05)
+
+
+def test_default_deadline_is_twenty_seconds():
+    import repohub.core.search as search_mod
+    assert search_mod.HOST_DEADLINE == 20.0
+
+
+async def test_search_times_out_one_host_and_keeps_the_others(fast_deadline):
+    import time
+    hub = make_hub(Hang("github"), FakeProvider("gitlab", [mk("gitlab", "g/p", 3)]))
+    t0 = time.monotonic()
+    r = await hub.search("x")
+    assert time.monotonic() - t0 < 5
+    assert r.errors == {"github": "timed out"} and [x.slug for x in r.repos] == ["g/p"]
+
+
+async def test_repo_summary_times_out(fast_deadline):
+    hub = make_hub(Hang("github"))
+    with pytest.raises(ProviderError, match="timed out"):
+        await hub.repo_summary("github", "o/r0")
+
+
+async def test_curated_page_keeps_snapshot_on_timeout(fast_deadline):
+    hub = make_hub(Hang("github"), live_provider("gitlab", n=3))
+    shelf = Shelf(name="C", as_of="2026-09-01", repos=(
+        ShelfEntry("github", "o/r0", note="n", snapshot=Snapshot("snap", 5, "Go", "MIT", "2026-08-01")),
+        ShelfEntry("gitlab", "o/r1", note="n")))
+    page = await hub.curated_page(shelf, 0, 12)
+    assert page.errors == {"github": "timed out"}
+    assert [i.live for i in page.items] == [False, True] and page.items[0].repo.description == "snap"
+
+
+async def test_detail_repo_timeout_raises_and_readme_timeout_degrades(fast_deadline):
+    with pytest.raises(ProviderError, match="timed out"):
+        await make_hub(Hang("github")).detail("github", "o/r0")
+
+    class SlowReadme(FakeProvider):
+        async def readme(self, slug):
+            await asyncio.Event().wait()
+
+        async def latest_release(self, slug):
+            await asyncio.Event().wait()
+
+    d = await make_hub(SlowReadme("github", [mk("github", "o/r0")])).detail("github", "o/r0")
+    assert d.repo.slug == "o/r0" and d.readme is None and d.release is None
+
+
+async def test_slow_but_in_time_provider_is_unaffected(monkeypatch):
+    import repohub.core.search as search_mod
+    monkeypatch.setattr(search_mod, "HOST_DEADLINE", 2.0)
+
+    class Slowish(FakeProvider):
+        async def search(self, query, filters, per_page=30):
+            await asyncio.sleep(0.05)
+            return await super().search(query, filters, per_page)
+
+    r = await make_hub(Slowish("github", [mk("github", "o/r0")])).search("x")
+    assert r.errors == {} and len(r.repos) == 1
+
+
+async def test_caller_cancellation_is_not_swallowed():
+    hub = make_hub(Hang("github"))
+    task = asyncio.ensure_future(hub.search("x"))
+    await asyncio.sleep(0.05)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+async def test_partial_results_are_cached_for_sixty_seconds():
+    clock = Clock()
+    ok = FakeProvider("gitlab", [mk("gitlab", "g/p", 3)])
+    bad = FakeProvider("github", error=ProviderError("github", "boom"))
+    hub = make_hub(bad, ok, clock=clock)
+    for _ in range(3):
+        r = await hub.search("x")
+    assert ok.calls == 1 and bad.calls == 1
+    assert r.errors == {"github": "boom"} and [x.slug for x in r.repos] == ["g/p"]
+    clock.t += 61
+    await hub.search("x")
+    assert ok.calls == 2
+
+
+async def test_all_hosts_failing_is_still_not_cached():
+    a = FakeProvider("github", error=ProviderError("github", "boom"))
+    b = FakeProvider("gitlab", error=ProviderError("gitlab", "boom"))
+    hub = make_hub(a, b)
+    await hub.search("x")
+    await hub.search("x")
+    assert a.calls == 2 and b.calls == 2
+
+
+async def test_repointing_a_host_misses_the_cache():
+    from repohub.core.hosts import BUILTIN_HOSTS, HostRegistry, HostSpec, set_registry
+
+    def reg(domain):
+        return HostRegistry(BUILTIN_HOSTS + (HostSpec("myforge", "forgejo", "m", domain, f"https://{domain}/api/v1"),))
+
+    p = FakeProvider("myforge", [mk("myforge", "o/r")])
+    hub = make_hub(p)
+    hub.providers["myforge"] = p
+    set_registry(reg("one.example.org"))
+    from repohub.core.models import SearchFilters as F
+    f = F(hosts=("myforge",))
+    await hub.search("x", f)
+    await hub.repo_summary("myforge", "o/r")
+    await hub.detail("myforge", "o/r")
+    calls = p.calls
+    await hub.search("x", f)
+    await hub.repo_summary("myforge", "o/r")
+    await hub.detail("myforge", "o/r")
+    assert p.calls == calls                      # unchanged registry: all cache hits
+    set_registry(reg("two.example.org"))
+    await hub.search("x", f)
+    await hub.repo_summary("myforge", "o/r")
+    await hub.detail("myforge", "o/r")
+    assert p.calls == calls + 3                  # repointed: three misses

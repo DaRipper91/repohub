@@ -65,13 +65,13 @@ async def test_old_cache_rows_without_fork_key_still_load():
     hub = make_hub(FakeProvider("github"))
     # search
     filters, query = SearchFilters(), "x"
-    digest = hashlib.sha256(json.dumps([query, asdict(filters)], sort_keys=True).encode()).hexdigest()
+    digest = hashlib.sha256(json.dumps([query, asdict(filters), sorted((h, {"github": "github.com", "gitlab": "gitlab.com", "codeberg": "codeberg.org"}[h]) for h in filters.hosts)], sort_keys=True).encode()).hexdigest()
     hub.cache.set(f"search:{digest}", {"repos": [_old_row(r)], "errors": {}}, SEARCH_TTL)
     res = await hub.search(query, filters)
     assert res.repos[0].slug == "o/r" and res.repos[0].fork is False
     # repo summary
-    hub.cache.set("repo:github:o/r", _old_row(r), DETAIL_TTL)
+    hub.cache.set("repo:github@github.com:o/r", _old_row(r), DETAIL_TTL)
     assert (await hub.repo_summary("github", "O/R")).fork is False
     # detail
-    hub.cache.set("detail:github:o/r", {"repo": _old_row(r), "readme": "x", "release": None}, DETAIL_TTL)
+    hub.cache.set("detail:github@github.com:o/r", {"repo": _old_row(r), "readme": "x", "release": None}, DETAIL_TTL)
     assert (await hub.detail("github", "o/r")).repo.fork is False

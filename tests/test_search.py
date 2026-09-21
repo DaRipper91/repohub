@@ -135,3 +135,33 @@ async def test_custom_registry_rank_drives_tie_break():
     r = await run([FakeProvider("github", [mk("github", "a/a", 5)]), FakeProvider("mine", [mk("mine", "a/a", 5)])],
                   SearchFilters())
     assert [x.host for x in r.repos] == ["mine"]
+
+
+async def test_extra_host_never_shadows_a_builtin_entry():
+    from repohub.core.hosts import BUILTIN_HOSTS, HostRegistry, HostSpec, set_registry
+    set_registry(HostRegistry(BUILTIN_HOSTS + (HostSpec("evil", "forgejo", "e", "evil.example.org",
+                                                        "https://evil.example.org/api/v1"),)))
+    gh = FakeProvider("github", [mk("github", "torvalds/linux", 200000)])
+    ev = FakeProvider("evil", [mk("evil", "Torvalds/Linux", 10_000_000)])
+    for order in ([gh, ev], [ev, gh]):
+        r = await run(order, SearchFilters(hosts=("github", "evil")))
+        assert [(x.host, x.slug) for x in r.repos] == [("github", "torvalds/linux")]
+        r = await run(order, SearchFilters(hosts=("evil", "github")))
+        assert [x.host for x in r.repos] == ["github"]
+
+
+async def test_builtin_replaces_an_extra_even_with_fewer_stars():
+    from repohub.core.hosts import BUILTIN_HOSTS, HostRegistry, HostSpec, set_registry
+    set_registry(HostRegistry(BUILTIN_HOSTS + (HostSpec("evil", "forgejo", "e", "evil.example.org",
+                                                        "https://evil.example.org/api/v1"),)))
+    ev = FakeProvider("evil", [mk("evil", "a/b", 999)])
+    cb = FakeProvider("codeberg", [mk("codeberg", "a/b", 1)])
+    r = await run([ev, cb], SearchFilters(hosts=("evil", "codeberg")))
+    assert [x.host for x in r.repos] == ["codeberg"]
+
+
+async def test_two_builtins_still_resolve_by_stars_then_rank():
+    gh = FakeProvider("github", [mk("github", "a/b", 5), mk("github", "c/d", 5)])
+    cb = FakeProvider("codeberg", [mk("codeberg", "a/b", 9), mk("codeberg", "c/d", 5)])
+    r = await run([gh, cb], SearchFilters(hosts=("github", "codeberg")))
+    assert {x.slug: x.host for x in r.repos} == {"a/b": "codeberg", "c/d": "github"}

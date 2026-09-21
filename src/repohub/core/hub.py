@@ -12,12 +12,13 @@ from repohub.core.cache import Cache
 from repohub.core.hosts import registry
 from repohub.core.models import Release, Repo, SearchFilters
 from repohub.core.providers.base import NotFound, ProviderError, RateLimited
-from repohub.core.search import SearchResult, search_all
+from repohub.core.search import SearchResult, search_all, with_deadline
 from repohub.core.store import Favorites
 
 SEARCH_TTL = 600
 DETAIL_TTL = 3600
 DEGRADED_TTL = 60
+PARTIAL_TTL = 60
 MIN_LIMIT_WAIT = 60
 MAX_LIMIT_WAIT = 3600
 REFRESH_CONCURRENCY = 8
@@ -72,6 +73,12 @@ def repo_from_snapshot(entry: ShelfEntry, as_of: str | None) -> Repo:
 NOT_CONFIGURED = "host not configured"
 
 
+def _domain(host: str) -> str:
+    """The host's configured domain, for cache keys (a repointed id must not reuse old entries)."""
+    spec = registry().get(host)
+    return spec.domain if spec else "?"
+
+
 class Hub:
     def __init__(self, providers: dict, cache: Cache, favorites: Favorites, *,
                  clock: Callable[[], float] = time.time, host_problems: list[str] | None = None):
@@ -98,7 +105,8 @@ class Hub:
 
     async def search(self, query: str, filters: SearchFilters | None = None) -> SearchResult:
         filters = filters or SearchFilters()
-        digest = hashlib.sha256(json.dumps([query, asdict(filters)], sort_keys=True).encode()).hexdigest()
+        searched = sorted((h, _domain(h)) for h in filters.hosts)
+        digest = hashlib.sha256(json.dumps([query, asdict(filters), searched], sort_keys=True).encode()).hexdigest()
         key = f"search:{digest}"
         hit = self.cache.get(key)
         if hit is not None:
@@ -106,11 +114,15 @@ class Hub:
         result = await search_all(self.providers, query, filters)
         if not result.errors:
             self.cache.set(key, result.to_dict(), SEARCH_TTL)
-        elif not result.repos:
+            return result
+        if not result.repos:
             stale = self.cache.get(key, allow_stale=True)
             if stale is not None:
                 old = SearchResult.from_dict(stale)
                 return SearchResult(old.repos, result.errors, stale=True)
+        asked = [h for h in filters.hosts if h in self.providers]
+        if len(result.errors) < len(asked):  # some hosts answered: keep the partial result briefly
+            self.cache.set(key, result.to_dict(), PARTIAL_TTL)
         return result
 
     async def shelf(self, shelf: Shelf) -> SearchResult:
@@ -123,11 +135,11 @@ class Hub:
         provider = self.providers.get(host)
         if provider is None:
             raise ProviderError(host, NOT_CONFIGURED)
-        key = f"repo:{host}:{slug.lower()}"
+        key = f"repo:{host}@{_domain(host)}:{slug.lower()}"
         hit = self.cache.get(key)
         if hit is not None:
             return Repo.from_dict(hit)
-        repo = await provider.repo(slug)
+        repo = await with_deadline(host, provider.repo(slug))
         self.cache.set(key, repo.to_dict(), DETAIL_TTL)
         return repo
 
@@ -180,13 +192,14 @@ class Hub:
         provider = self.providers.get(host)
         if provider is None:
             raise ProviderError(host, NOT_CONFIGURED)
-        key = f"detail:{host}:{slug.lower()}"
+        key = f"detail:{host}@{_domain(host)}:{slug.lower()}"
         hit = self.cache.get(key)
         if hit is not None:
             return Detail.from_dict(hit)
         try:
             repo, readme, release = await asyncio.gather(
-                provider.repo(slug), provider.readme(slug), provider.latest_release(slug), return_exceptions=True)
+                with_deadline(host, provider.repo(slug)), with_deadline(host, provider.readme(slug)),
+                with_deadline(host, provider.latest_release(slug)), return_exceptions=True)
             if isinstance(repo, BaseException):
                 raise repo
         except NotFound:
@@ -222,7 +235,7 @@ class Hub:
                 return
             try:
                 async with sem:
-                    fresh = await provider.repo(repo.slug)
+                    fresh = await with_deadline(repo.host, provider.repo(repo.slug))
                 self.favorites.update(fresh)
             except ProviderError:
                 self.favorites.mark_checked(repo.key)  # retry at most once per max_age

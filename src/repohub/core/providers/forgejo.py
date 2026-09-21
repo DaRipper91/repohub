@@ -15,6 +15,7 @@ README_NAMES = ("README.md", "README.markdown", "README.rst", "README.txt", "REA
 MAX_LIMIT = 50
 MAX_SLUG = 200
 MAX_WORDS = 6
+MAX_BODY_BYTES = 4 * 1024 * 1024  # largest response body read from a host
 
 
 def _count(value, default: int | None = None) -> int:
@@ -110,8 +111,20 @@ class ForgejoProvider:
         return len(slug) <= MAX_SLUG and valid_slug(slug, "github")
 
     async def _send(self, path: str, params: dict | None) -> httpx.Response:
+        """GET with a body-size cap. Only 2xx bodies are read; the connection is closed on refusal."""
         try:
-            return await self._client.get(path, params=params)
+            async with self._client.stream("GET", path, params=params) as resp:
+                if not 200 <= resp.status_code < 300:
+                    return httpx.Response(resp.status_code, headers={"retry-after": resp.headers.get("retry-after", "")})
+                declared = resp.headers.get("content-length", "")
+                if declared.isdigit() and int(declared) > MAX_BODY_BYTES:
+                    raise ProviderError(self.host, "response too large")
+                body = bytearray()
+                async for chunk in resp.aiter_bytes():
+                    body += chunk
+                    if len(body) > MAX_BODY_BYTES:
+                        raise ProviderError(self.host, "response too large")
+                return httpx.Response(resp.status_code, content=bytes(body))
         except httpx.HTTPError as e:
             raise ProviderError(self.host, "network error") from e
 
@@ -164,6 +177,7 @@ class ForgejoProvider:
         data = resp.json()["data"]
         if not isinstance(data, list):
             raise TypeError("data")
+        data = data[:params["limit"]]  # never map more than was asked for
         repos = [self._to_repo(i) for i in data if self._slug_ok(i)]  # invalid names are dropped, not fatal
         if len(words) > 1:
             folded = [w.casefold() for w in words]

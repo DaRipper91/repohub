@@ -641,3 +641,70 @@ async def test_release_assets_may_live_on_another_host():
     respx.get(f"{API}/repos/o/r/releases/latest").mock(return_value=httpx.Response(200, json=rel))
     r = await ForgejoProvider("codeberg", API).latest_release("o/r")
     assert [a.name for a in r.assets] == ["a.zip"]
+
+
+# ---- response size and item caps ----------------------------------------------------------------
+
+from repohub.core.providers import forgejo as forgejo_mod  # noqa: E402
+
+
+@respx.mock
+async def test_search_truncates_to_per_page_before_mapping():
+    items = [dict(ITEM, full_name=f"o/r{i}", html_url=f"https://codeberg.org/o/r{i}") for i in range(2000)]
+    respx.get(f"{API}/repos/search").mock(return_value=search_resp(*items))
+    repos = await ForgejoProvider("codeberg", API).search("x", SearchFilters(), per_page=30)
+    assert len(repos) == 30 and repos[0].slug == "o/r0"
+    repos = await ForgejoProvider("codeberg", API).search("x", SearchFilters(), per_page=500)
+    assert len(repos) == 50  # the provider maximum
+
+
+@respx.mock
+async def test_body_over_the_cap_is_refused(monkeypatch):
+    monkeypatch.setattr(forgejo_mod, "MAX_BODY_BYTES", 1000)
+    body = b'{"ok": true, "data": [' + b" " * 2000 + b"]}"
+    respx.get(f"{API}/repos/search").mock(
+        return_value=httpx.Response(200, content=body, headers={"content-type": "application/json"}))
+    called = []
+    monkeypatch.setattr(ForgejoProvider, "_to_repo", lambda self, item: called.append(item))
+    with pytest.raises(ProviderError, match="response too large"):
+        await ForgejoProvider("codeberg", API).search("x", SearchFilters())
+    assert called == []
+
+
+@respx.mock
+async def test_chunked_body_over_the_cap_is_refused_without_a_length_header(monkeypatch):
+    monkeypatch.setattr(forgejo_mod, "MAX_BODY_BYTES", 1000)
+
+    async def gen():
+        for _ in range(10):
+            yield b"x" * 500
+
+    respx.get(f"{API}/repos/o/r/raw/README.md").mock(return_value=httpx.Response(200, content=gen()))
+    with pytest.raises(ProviderError, match="response too large"):
+        await ForgejoProvider("codeberg", API).readme("o/r")
+
+
+@respx.mock
+async def test_declared_content_length_over_the_cap_is_refused_before_reading(monkeypatch):
+    monkeypatch.setattr(forgejo_mod, "MAX_BODY_BYTES", 1000)
+    read = []
+
+    async def gen():
+        read.append(1)
+        yield b"x" * 10
+
+    respx.get(f"{API}/repos/o/r/raw/README.md").mock(
+        return_value=httpx.Response(200, content=gen(), headers={"content-length": "999999"}))
+    with pytest.raises(ProviderError, match="response too large"):
+        await ForgejoProvider("codeberg", API).readme("o/r")
+    assert read == []
+
+
+@respx.mock
+async def test_small_responses_are_unchanged():
+    respx.get(f"{API}/repos/o/r/raw/README.md").mock(return_value=httpx.Response(200, text="# hi"))
+    assert await ForgejoProvider("codeberg", API).readme("o/r") == "# hi"
+
+
+def test_default_body_cap_is_four_mebibytes():
+    assert forgejo_mod.MAX_BODY_BYTES == 4 * 1024 * 1024
