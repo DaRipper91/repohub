@@ -1,7 +1,7 @@
 # RepoHub roadmap and Phase 1 design
 
 Date: 2026-09-21
-Status: Approved design for Phase 1, not yet implemented. Later phases are agreed direction; each gets its own design before it is built.
+Status: Phase 1 is implemented (see the end of this document for the changes made along the way). Later phases are agreed direction; each gets its own design before it is built.
 
 ## Where this comes from
 
@@ -77,3 +77,16 @@ Cloning, installing or changing favorites from the CLI; the project detector and
 - GitHub search is rate limited without a token (about 10 requests a minute); the new sort and filter options add no extra requests, but the curated-shelf refresh does, which is why it is capped and lazy.
 - GitLab cannot sort by forks or hide forks server-side, so those two options only apply to the results already fetched and can shrink a page of results.
 - `Repo.fork` changes the model; old cached rows must keep loading (covered by a test).
+
+## Changes made during Phase 1 implementation
+
+What differs from, or was added to, the design above, as found in the code:
+
+- **Parser messages are sanitised and capped.** `queryparse.py` strips control and bidirectional characters from any user text echoed in a message and truncates it to 40 characters. At most 10 problems are kept, followed by one "... and more problems ignored" entry (11 in total). Messages are plain text and must never be rendered as markup.
+- **ASCII-only numbers.** `stars:` and `days:` accept only ASCII digits (with an optional `>` or `>=`), so Unicode digits, `1_000` and `+5` are rejected. Values have a length and range limit.
+- **Problem-message safety.** Problem text shown in the web app, terminal app and CLI is bounded and cleaned before display. The web app shows at most 11 search problems and a fixed number of shelf-file banners.
+- **Snapshot-only home tiles.** `Hub.curated_page(..., refresh=False)` returns stored snapshots with no provider calls. The web home page uses it for curated shelf tiles because live refreshes would spend the API rate limit; opening a shelf refreshes the visible entries.
+- **Personal shelves file hardening.** Only regular files are read (a FIFO or device is rejected before opening), with a 1 MB size limit, valid UTF-8 required, at most 200 shelves and 1000 entries per shelf, strict validation of keys, types, hosts and slugs, and bounded text lengths. Unquoted YAML dates are accepted for `as_of` and `pushed_at` and converted to text. Any failure skips the whole personal file and is reported as a problem instead of stopping the app.
+- **Terminal notifications are plain text.** Every `notify(...)` call in the terminal app passes `markup=False`.
+- **CLI output safety.** In `--json` mode, dangerous characters (C1 controls, bidirectional controls, line and paragraph separators) are written as `\uXXXX` escapes, and stdout carries only the JSON document. Table cells are sanitised and truncated (descriptions to 60 characters, slugs to 60, languages to 20), and error messages are capped at 300 characters.
+- **`--no-refresh`.** `repohub shelf` gained `--no-refresh`, which shows a curated shelf from its stored snapshots with no API calls.

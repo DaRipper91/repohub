@@ -21,6 +21,9 @@
   <a href="#-quick-start">Quick start</a> ·
   <a href="#-terminal-app">Terminal app</a> ·
   <a href="#-web-app">Web app</a> ·
+  <a href="#-search-syntax">Search syntax</a> ·
+  <a href="#-shelves">Shelves</a> ·
+  <a href="#-command-line">Command line</a> ·
   <a href="#-how-it-works">How it works</a> ·
   <a href="#-security">Security</a> ·
   <a href="#-development">Development</a>
@@ -39,7 +42,7 @@
 | | |
 |---|---|
 | 🔎 **One search, two hosts** | GitHub and GitLab are queried together and merged into a single ranked list. Filter by language, minimum stars, recent activity and host. If one host fails or rate-limits you, the other host's results still show. |
-| 🗂️ **Store-style shelves** | Browse curated shelves (Terminal tools, Local AI, Retro and emulation, Self-hosted, Creative coding, Networking) without typing a query. Shelves are plain YAML you can edit. |
+| 🗂️ **Store-style shelves** | Browse curated shelves (Terminal tools, Local AI, Retro and emulation, Self-hosted, Creative coding, Networking) without typing a query. Shelves are plain YAML: packaged ones, plus your own in a personal file. |
 | 📄 **Repo pages that read like an app page** | Rendered README, stars, forks, license, topics, and the latest release with its files. A green **arm64** badge appears when a release ships an arm64 or aarch64 build. |
 | ⭐ **Favorites** | Save repos to a local wishlist. Stats refresh in the background and never block the page. |
 | 📥 **Safe clone** | Shows the exact destination and asks before doing anything. Shallow clone, `https` on `github.com` or `gitlab.com` only, and no install or build steps are ever run. |
@@ -92,6 +95,7 @@ Open a repository to read its README and release info. Press `f` to favorite it 
 | `Enter` | Open the selected shelf or repository |
 | `f` | Favorite or unfavorite (repository screen) |
 | `c` then `y` / `n` | Clone: shows the destination, then confirm or cancel |
+| `[` / `]` | Previous or next page of a curated shelf |
 | `Ctrl+F` | Show your favorites |
 | `Esc` | Back from a repository, or return to the shelves |
 | `Ctrl+Q` | Quit |
@@ -109,6 +113,102 @@ Search across both hosts with filters, then open any repo for a store-style page
 </p>
 
 The web app starts on <http://127.0.0.1:8765>. It only accepts requests addressed to `127.0.0.1` or `localhost`; see [Security](#-security).
+
+## 🔎 Search syntax
+
+The search box in the web app, the terminal app and the `repohub search` command all understand the same `key:value` tokens. Keys are case-insensitive; everything that is not a token is searched as plain words.
+
+| Token | Meaning |
+|---|---|
+| `lang:rust` or `language:rust` | Language |
+| `stars:500` or `stars:>500` | Minimum stars (a leading `>` or `>=` is accepted and means "at least") |
+| `days:90` | Pushed within the last N days (`days:0` means no limit) |
+| `host:github`, `host:gitlab`, `host:both` | Which host to search |
+| `sort:stars`, `sort:updated`, `sort:forks` | Ordering |
+| `topic:cli` | Topic |
+| `nofork` | Hide forks |
+| `archived` | Include archived repositories |
+
+```
+terminal ui lang:go stars:>500 days:90 sort:updated nofork
+```
+
+- `nofork` and `archived` are consumed as flags, so you cannot search for those words themselves.
+- An unknown `key:value` (for example `http:x`) stays in the search as ordinary words.
+- A token with a bad value is ignored and reported as `Ignored: ...` (a banner in the web app, the status line in the terminal app, stderr on the command line). The rest of the query still runs.
+- The web form also has sort and hide-forks controls. A token in the text overrides the matching form control.
+
+## 🗂️ Shelves
+
+A shelf is a named group of repositories on the home page. There are two kinds:
+
+- **Search shelves** run a search (optional `topic`, `language`, `min_stars`, `days`). Six are packaged: Terminal tools, Local AI, Retro and emulation, Self-hosted, Creative coding and Networking.
+- **Curated shelves** list exact repositories. Eight packaged `Catalog: ...` shelves hold 171 curated repositories with the curator's one-line note for each, and stats snapshotted on 2026-09-20.
+
+Home-page tiles for curated shelves show the stored snapshots only (no API calls). Opening a shelf refreshes the entries you can see live: 12 per page in the web app, 25 per page in the terminal app (page with `[` and `]`). If refreshing an entry fails, its snapshot is kept and marked "as of" its snapshot date.
+
+### Your own shelves
+
+Personal shelves go in `shelves.yaml` in your user config directory (`~/.config/repohub/shelves.yaml` on Linux, found with platformdirs' `user_config_dir`). They are loaded after the packaged shelves.
+
+```yaml
+- name: My Rust tools            # a search shelf
+  topic: cli
+  language: Rust
+  min_stars: 200
+  days: 180
+
+- name: Things I keep meaning to read   # a curated shelf
+  as_of: '2026-09-20'
+  repos:
+    - github:BurntSushi/ripgrep     # a plain string: host:owner/name
+    - repo: gitlab:gitlab-org/cli   # or a mapping
+      note: Official GitLab CLI.
+      snapshot:
+        description: GitLab CLI
+        stars: 1200
+        language: Go
+        license: MIT
+        pushed_at: '2026-09-01'
+```
+
+- Quote dates (`'2026-09-20'`). Unquoted dates in `as_of` and `pushed_at` are accepted and converted, but other fields that should be text must be quoted.
+- Limits: the file may be at most 1 MB, with at most 200 shelves and 1000 entries per shelf. Entry numbers in error messages start at 0.
+- A broken personal file never stops RepoHub. The problem is shown (a banner in the web app, the status line in the terminal app, a `warning:` line on stderr in the CLI) and the whole personal file is skipped until you fix it. Only regular files are read.
+
+## 💻 Command line
+
+`repohub` is a read-only command for scripts and quick lookups. It never clones, favorites or changes anything.
+
+```
+repohub search TEXT... [--lang L] [--min-stars N] [--days N] [--host github|gitlab|both]
+                       [--sort stars|updated|forks] [--no-forks] [--archived] [--limit N] [--json]
+repohub repo HOST:OWNER/NAME [--readme] [--json]
+repohub shelves [--json]
+repohub shelf NAME_OR_INDEX [--limit N] [--no-refresh] [--json]
+repohub favorites [--json]
+```
+
+`search` accepts the [search syntax](#-search-syntax) in its text; tokens in the text override the flags. `--limit` is 1 to 200 for `search` (default 20) and 1 to 50 for `shelf` (default 20). `shelf` takes an exact name (case-insensitive) or the index shown by `repohub shelves`, and shows the first page only. `--no-refresh` makes a curated shelf use its stored snapshots with no API calls. `favorites` and `shelves` do not use the network.
+
+```bash
+repohub search "terminal ui lang:go stars:>500 nofork" --limit 10
+repohub shelves
+repohub shelf "Catalog: Terminal & TUI" --limit 5 --no-refresh
+repohub repo github:BurntSushi/ripgrep --json | jq -r '.release.assets[] | select(.arch == "arm64") | .name'
+```
+
+**JSON output.** With `--json`, stdout holds exactly one JSON document and everything else (warnings, `Ignored: ...`, notes) goes to stderr. Characters that are dangerous in terminals or logs (control, bidirectional and line-separator characters) are written as `\uXXXX` escapes.
+
+| Command | Document |
+|---|---|
+| `search`, `favorites` | `{"schema_version": 1, "repos": [...], "errors": {host: message}, "stale": bool}` |
+| `shelf` (search shelf) | the same, plus `"shelf": name` |
+| `shelf` (curated) | the same, plus `"shelf"`; each repo also has `note`, `as_of` and `live` (`false` when the stored snapshot is shown) |
+| `shelves` | `{"schema_version": 1, "shelves": [{"index", "name", "kind", "entries"}]}` (`kind` is `search` or `curated`; `entries` is 0 for search shelves) |
+| `repo` | `{"schema_version": 1, "repo": {...}, "release": {"tag", "published_at", "assets": [{"name", "size", "url", "arch"}]} or null, "readme": text or null}` (`readme` only with `--readme`; `arch` is `arm64`, `x86_64` or `unknown`) |
+
+**Exit codes.** `0` success; `1` error (host failure with no results, unknown shelf or repository, unexpected error); `2` usage error (including a malformed `HOST:OWNER/NAME`); `3` partial success (some results, but a host reported an error); `130` interrupted. Table output cells are sanitised and truncated to keep lines readable.
 
 ## 🧠 How it works
 
@@ -141,7 +241,8 @@ src/repohub/
     models.py       Repo, Release, Asset, SearchFilters
     providers/      github.py, gitlab.py, base.py (errors, slug + URL validation)
     search.py       fan-out, merge, rank, dedupe
-    browse.py       shelves loaded from shelves.yaml
+    queryparse.py   search syntax (key:value tokens)
+    browse.py       packaged and personal shelves (search and curated)
     hub.py          facade used by both front ends: caching, stale fallback
     cache.py        SQLite response cache with TTL
     store.py        favorites
@@ -150,6 +251,7 @@ src/repohub/
     textsafe.py     control-character stripping for untrusted text
   web/              FastAPI app, templates, static files (htmx is vendored)
   tui/              Textual app
+  cli.py            the read-only repohub command
   config.py         wires providers, cache and favorites together
 docs/plans/         design and implementation plan
 tests/              offline test suite (+ opt-in live tests)
@@ -166,12 +268,10 @@ Tokens are optional but raise API rate limits. Without one, GitHub search allows
 | GitHub token | `GITHUB_TOKEN`, then `GH_TOKEN`, then the output of `gh auth token` if the GitHub CLI is installed |
 | GitLab token | `GITLAB_TOKEN` |
 | Clone folder | `REPOHUB_CLONE_DIR` (default `~/playground`) |
-| Shelves | Edit `src/repohub/core/shelves.yaml`: each shelf has a `name`, optional `topic`, `min_stars` and `days` (recent-push window) |
+| Shelves | Packaged shelves ship with the app; add your own in `~/.config/repohub/shelves.yaml` (see [Shelves](#-shelves)) |
 | Cache and favorites | One SQLite file, `repohub.db`, in your user data directory (`~/.local/share/repohub/` on Linux) |
 
 Tokens are held in memory only, sent only to their own API host, and never logged. Surrounding whitespace is stripped. If a token is rejected (HTTP 401), RepoHub drops it for that host and retries once anonymously.
-
-Shelf edits take effect with an editable install (`-e`, as above); otherwise edit the installed copy.
 
 ## 🛡️ Security
 
@@ -216,6 +316,8 @@ The design and the task-by-task implementation plan are in [`docs/plans/`](docs/
 - Results from the two hosts are deduplicated by `owner/name`, so different repositories that share an owner and name across hosts are merged.
 - GitLab search results carry no language unless you filter by language, and its minimum-stars filter is applied client-side, so a page of results can shrink.
 - Recency filters drop repositories with an unknown push date.
+- Curated shelf refreshes use extra API requests (a bounded number per page, cached for one hour). Without a token GitHub allows only about 60 core requests per hour, so keep a token set for heavy browsing.
+- GitLab cannot sort by forks or hide forks server-side, so those options only apply to the results that were fetched.
 - Remote images in READMEs can load in the web app (the CSP allows `img-src *`), which shows your IP address to those hosts.
 - The cache is never purged; expired entries are only overwritten.
 - Not included in v1: accounts or login flows, starring or forking from inside the app, other hosts (Codeberg, Bitbucket), and recommendations.
