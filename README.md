@@ -592,7 +592,7 @@ Standing rules for every phase: the existing clone protections stay as they are;
 - Personal search shelves are validated: `language` and `topic` must use the same characters the search syntax allows (`topic` is lowercased), `query` is at most 200 characters on one line, and a `repos` key that is empty is an error.
 - GitLab cannot sort by forks or hide forks server-side, so those options only apply to the results that were fetched.
 - Remote images in READMEs can load in the web app (the CSP allows `img-src *`), which shows your IP address to those hosts.
-- The cache is never purged; expired entries are only overwritten.
+- Cached entries are kept for up to 7 days past expiry so a stale snapshot can still be shown when a host is rate-limited or unreachable; older entries are purged when the cache opens and about hourly while it is written.
 - Bitbucket is not planned. See the [roadmap](#-roadmap) for what is planned.
 
 ## 📜 License
